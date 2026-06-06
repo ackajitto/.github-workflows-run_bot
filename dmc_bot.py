@@ -14,8 +14,8 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-    # 🎯 แก้ไขลิงก์ URL ตัวปัญหาเรียบร้อยแล้วครับ
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # 🎯 ปรับโครงสร้าง URL เป็น v1 (เวอร์ชันทางการ) เพื่อแก้ปัญหาหาโมเดลไม่เจอเรียบร้อยครับ
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     # 🧠 บรีฟแบบให้เสรีภาพ AI เต็มที่ในการเรียบเรียงภาษาให้ดีและได้ประโยชน์ที่สุดกับคุณ
     prompt = f"""
@@ -50,14 +50,9 @@ def ask_gemini_to_summarize(raw_web_data):
     • (สรุปงานบุญเด่นๆ ที่เพิ่งจัดผ่านพ้นไป ยุบรวมเป็นก้อนเดียว ชวนให้ร่วมอนุโมทนาย้อนหลังอย่างมีความสุข ไม่เกิน 3 รายการ พร้อมแนบลิงก์รวมรูปภาพ)
     """
     
+    # ส่งคำสั่งและเนื้อหาไปหา AI ตามโครงสร้าง JSON มาตรฐาน
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-        ]
+        "contents": [{"parts": [{"text": prompt}]}]
     }
     
     headers = {"Content-Type": "application/json"}
@@ -66,6 +61,7 @@ def ask_gemini_to_summarize(raw_web_data):
         res = requests.post(url, headers=headers, json=payload)
         result_json = res.json()
         
+        # ตรวจสอบว่ามี Error จากระบบ Google หรือไม่
         if 'error' in result_json:
             return f"❌ Google AI แจ้งข้อผิดพลาด: {result_json['error']['message']}"
             
@@ -93,7 +89,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญ AI สมองกล (เวอร์ชั่นแก้ URL ลิงก์) กำลังเริ่มงาน...")
+    print("🚀 บอทสายบุญ AI สมองกล (เวอร์ชันเสถียร v1) กำลังเริ่มงาน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -114,7 +110,7 @@ def main():
             raw_web_data = "\n".join(web_data_list[:150])
             browser.close()
             
-            print("🧠 ส่งต่อข้อมูลคลีนให้ AI เรียบเรียงภาษาที่สละสลวย...")
+            print("🧠 ส่งต่อข้อมูลให้ AI เรียบเรียงภาษาที่สละสลวย...")
             final_report = ask_gemini_to_summarize(raw_web_data)
             
             print("\n=== ผลลัพธ์จาก AI ===")
