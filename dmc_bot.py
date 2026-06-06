@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -14,14 +15,11 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-    # 🎯 จัดทัพโมเดลใหม่: ดึงรุ่นเสถียรสูงสุดมารองรับ เพื่อหลบเลี่ยงอาการคนใช้งานหนาแน่น
-    models_to_try = [
-        'gemini-1.5-flash',      # พระเอกสายเสถียร โควตากว้าง ไม่ค่อยติดขัด
-        'gemini-2.5-flash',      # รุ่นใหม่ล่าสุด (ใส่ไว้เผื่อจังหวะไหนคนใช้น้อยจะผ่านฉลุย)
-        'gemini-1.5-flash-8b'    # รุ่นเล็กพริกขี้หนูจอมอึด สำรองตัวสุดท้าย
-    ]
+    # 🎯 เจาะจงใช้รุ่นหลัก 2.5-flash ที่ใช้ได้จริงตัวเดียวเลยครับ
+    model_name = 'gemini-2.5-flash'
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
     
-    # 🧠 บรีฟย่นย่อเนื้อหาธรรมะและความรู้ให้จบใน LINE ไม่ต้องกดลิงก์ซับซ้อน
+    # 🧠 บรีฟย่นย่อเนื้อหาธรรมะและความรู้ให้จบใน LINE ไม่ต้องกดลิงก์ซับซ้อนตามที่คุณต้องการ
     prompt = f"""
     คุณคือนักข่าวสายบุญและบรรณาธิการอัจฉริยะ หน้าที่ของคุณคืออ่านข้อมูลตัวอักษรและลิงก์ดิบจากเว็บ DMC.tv
     แล้วนำมาคัดสรร เรียบเรียง และเขียนสรุปข่าวขึ้นมาใหม่ด้วยภาษาที่ไพเราะ สละสลวย นุ่มนวล ชวนให้อนุโมทนาบุญ 
@@ -59,23 +57,30 @@ def ask_gemini_to_summarize(raw_web_data):
     }
     headers = {"Content-Type": "application/json"}
     
-    for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+    # 🔄 ระบบตื๊อซ้ำ 3 รอบ (หากเจออาการคนแน่นคิวเต็ม 503 หรือ 429)
+    for attempt in range(3):
         try:
-            print(f"📡 กำลังส่งข้อมูลตรงไปที่รุ่น: {model_name}...")
+            print(f"📡 กำลังส่งข้อมูลไปที่รุ่น: {model_name} (รอบที่ {attempt + 1}/3)...")
             res = requests.post(url, headers=headers, json=payload, timeout=30)
             result_json = res.json()
             
             if res.status_code == 200 and 'candidates' in result_json:
                 ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
-                print(f"🎉 รุ่น {model_name} ประมวลผลสำเร็จอย่างงดงาม!")
+                print(f"🎉 สำเร็จแล้วในรอบที่ {attempt + 1}!")
                 return ai_response.strip()
+                
+            elif res.status_code in [503, 429]:
+                print(f"⏳ เจอสถานะ {res.status_code} (คนแน่น/ติดคิวชั่วคราว) ขอพัก 10 วินาทีแล้วลองใหม่...")
+                time.sleep(10)
+                continue
             else:
-                print(f"❌ รุ่น {model_name} ปฏิเสธ รหัสสถานะ: {res.status_code} | ข้อความ: {result_json}\n")
+                print(f"❌ ปฏิเสธการทำงาน รหัส: {res.status_code} | ข้อความ: {result_json}")
+                break
         except Exception as e:
-            print(f"⚠️ เกิดข้อผิดพลาดกับรุ่น {model_name}: {e}\n")
+            print(f"⚠️ เกิดข้อผิดพลาดทางเทคนิค: {e}")
+            time.sleep(5)
             
-    return "❌ บอทกูเกิลปฏิเสธทุกโมเดลชั่วคราว โปรดตรวจสอบรายละเอียดข้อผิดพลาดใน Log อีกครั้งครับจ้ะ"
+    return "❌ บอทกูเกิลติดขัดเนื่องจากคนใช้งานหนาแน่นมากเกินไปจริงๆ โปรดรันใหม่อีกครั้งในภายหลังครับจ้ะ"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
@@ -92,13 +97,11 @@ def send_line_message(msg):
     try:
         res = requests.post(LINE_API, headers=headers, json=payload)
         print(f"📲 สถานะการส่ง LINE: {res.status_code}")
-        if res.status_code != 200:
-            print(f"💬 สาเหตุที่ LINE ไม่ยอมรับข้อความ: {res.text}")
     except Exception as e:
-        print(f"❌ ส่ง LINE ไม่สำเร็จเนื่องจากเครือข่าย: {e}")
+        print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันจัดทัพโมเดลสายเสถียร v1) เริ่มรัน...")
+    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันระบบตื๊ออัตโนมัติ 2.5-flash) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -125,7 +128,7 @@ def main():
             print("\n=== ผลลัพธ์สุดท้าย ===")
             print(final_report)
             
-            # ยิงข้อความเข้า LINE เสมอ (ถ้าพังจะส่งข้อความแจ้งเตือนพังเข้า LINE ให้ทราบด้วยครับ)
+            # ยิงผลลัพธ์เข้า LINE
             send_line_message(final_report)
 
         except Exception as e:
