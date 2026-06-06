@@ -1,0 +1,30 @@
+name: DMC Dhamma Summary
+
+on:
+  schedule:
+    # ⏰ รันทุกวันเวลา 00:00 UTC (เท่ากับ 07:00 น. หรือเจ็ดโมงเช้าของไทยพอดีครับ)
+    - cron: '0 0 * * *'  
+  workflow_dispatch: # เปิดปุ่มให้กดรันมือเองได้
+
+jobs:
+  run-dmc-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. ดึงโค้ดมาเตรียมพร้อม
+        uses: actions/checkout@v4
+
+      - name: 2. ติดตั้ง Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 3. ติดตั้ง Library และเบราว์เซอร์
+        run: |
+          pip install playwright requests beautifulsoup4
+          playwright install chromium
+
+      - name: 4. สั่งรันบอท DMC
+        env:
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_TARGET_ID: ${{ secrets.LINE_TARGET_ID }}
+        run: python dmc_bot.py
