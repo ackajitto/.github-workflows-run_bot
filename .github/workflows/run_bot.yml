@@ -1,30 +1,30 @@
-```yaml
 name: Meditation Auto Fill
 
 on:
   schedule:
-    - cron: '0 13 * * *' # รันอัตโนมัติทุกวันตอน 2 ทุ่มไทย
-  workflow_dispatch: # เปิดปุ่มให้เรากดสั่งรันเองได้
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        pip install playwright requests
-        playwright install chromium
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium
 
-    - name: Run script
-      env:
-        LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-        LINE_TARGET_ID: ${{ secrets.LINE_TARGET_ID }}
-        USERS_JSON: ${{ secrets.USERS_JSON }}
-      run: python meditation_bot.py
+      - name: Run script
+        env:
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_TARGET_ID: ${{ secrets.LINE_TARGET_ID }}
+          USERS_JSON: ${{ secrets.USERS_JSON }}
+        run: python meditation_bot.py
