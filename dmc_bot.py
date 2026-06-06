@@ -11,13 +11,11 @@ LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_TARGET_ID = os.environ.get("LINE_TARGET_ID")
 
 def ask_gemini_to_summarize(raw_web_data):
-    """ส่งข้อมูลเว็บดิบทั้งหมดไปให้ AI ของ Google ช่วยคัดกรองและเรียบเรียง"""
     if not GEMINI_API_KEY:
-        return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets ระบบจึงใช้ AI เรียบเรียงไม่ได้"
+        return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 🎯 บรีฟคำสั่งภาษาไทย สั่งให้ AI จัดหมวดหมู่ตามที่คุณต้องการเป๊ะๆ
     prompt = f"""
     คุณคือนักข่าวสายบุญอัจฉริยะ หน้าที่ของคุณคืออ่านข้อมูลตัวอักษรดิบที่ได้จากการกวาดหน้าแรกของเว็บ DMC.tv 
     แล้วนำมาคัดสรร เรียบเรียงใหม่ให้ได้ประโยชน์สูงสุดตามหมวดหมู่ด้านล่างนี้ โดยมีเงื่อนไขสำคัญคือ:
@@ -26,7 +24,7 @@ def ask_gemini_to_summarize(raw_web_data):
     3. หมวดทบทวนบุญ ให้ยุบรวมเป็นก้อนเดียว ไม่แยกในประเทศ/ต่างประเทศ คัดมาเฉพาะที่เด่นๆ น่าสนใจพอ
 
     ข้อมูลดิบจากหน้าเว็บ:
-    \"\"\"{raw_web_data[:20000]}\"\"\"
+    \"\"\"{raw_web_data}\"\"\"
 
     จงตอบกลับมาในรูปแบบข้อความเพื่อส่งเข้า LINE ตามโครงสร้างนี้เท่านั้น (ห้ามมีคำเกริ่นนำของ AI):
 
@@ -49,16 +47,34 @@ def ask_gemini_to_summarize(raw_web_data):
     • (สรุปงานบุญที่จัดผ่านไปแล้วรวมๆ กันแบบน่าสนใจ ไม่เกิน 3 รายการ พร้อมลิงก์)
     """
     
+    # ⚙️ เพิ่มการตั้งค่าสั่งให้ปิดระบบกรองความปลอดภัย (Safety Settings) เพื่อไม่ให้ AI บล็อกเนื้อหาธรรมะหรือเรื่องนรกสวรรค์
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ]
+    }
+    
     headers = {"Content-Type": "application/json"}
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     
     try:
         res = requests.post(url, headers=headers, json=payload)
         result_json = res.json()
+        
+        # ดักจับเคสกรณีที่ Google ส่งคำเตือนแจ้งพังกลับมา
+        if 'error' in result_json:
+            return f"❌ Google AI แจ้งข้อผิดพลาด: {result_json['error']['message']}"
+            
+        if 'candidates' in result_json and result_json['candidates'][0]['finishReason'] == 'SAFETY':
+            return "❌ AI ปฏิเสธการสรุปเนื่องจากติดฟิลเตอร์ความปลอดภัย"
+            
         ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
         return ai_response.strip()
     except Exception as e:
-        return f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ AI: {e}"
+        return f"❌ ระบบขัดข้องขณะประมวลผล AI: {e}\nResponse ดิบ: {res.text[:200]}"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
@@ -79,7 +95,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบสมองกล AI กำลังเดินทางไปที่ dmc.tv...")
+    print("🚀 บอทสายบุญ AI (ฉบับปลดล็อก Safety) กำลังทำงาน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -89,24 +105,23 @@ def main():
             page.goto(TARGET_URL, timeout=30000)
             page.wait_for_load_state("networkidle")
             
-            # กวาดตัวอักษรและลิงก์ทั้งหมดบนหน้าแรกมารวมกันเป็นเนื้อความดิบก้อนเดียว
+            # คลีนข้อมูลดึงเอาเฉพาะสิ่งที่เป็นประโยชน์จริง ๆ ไปให้ AI อ่าน เพื่อไม่ให้หนักสมองและไม่ติดขัด
             links = page.locator('a').all()
             web_data_list = []
             for link in links:
                 t = link.inner_text().strip()
                 h = link.get_attribute("href")
-                if t and h and h.startswith("http"):
-                    web_data_list.append(f"Content: {t} | Link: {h}")
+                # กรองเอาเฉพาะลิงก์หัวข้อข่าวจริง ๆ คัดพวกโฆษณาและระบบหลังบ้านทิ้งล่วงหน้า
+                if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
+                    web_data_list.append(f"หัวข้อ: {t} | ลิงก์รายละเอียด: {h}")
                     
-            raw_web_data = "\n".join(web_data_list)
+            raw_web_data = "\n".join(web_data_list[:150]) # จำกัดปริมาณข้อมูลให้พอดีกับ AI แฟลช
             browser.close()
             
-            # ส่งเนื้อหาทั้งหมดให้ AI สรุปตามบรีฟ
-            print("🧠 กำลังส่งข้อมูลให้ AI ประมวลผลและคัดกรองวันเวลา...")
+            print("🧠 กำลังส่งผ่านข้อมูลคลีนให้ AI สรุป...")
             final_report = ask_gemini_to_summarize(raw_web_data)
             
-            # ส่งเข้า LINE
-            print("\n=== ผลลัพธ์จาก AI ===")
+            print("\n=== ผลลัพธ์ ===")
             print(final_report)
             send_line_message(final_report)
 
