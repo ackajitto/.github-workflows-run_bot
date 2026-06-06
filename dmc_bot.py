@@ -1,7 +1,6 @@
 import os
 import requests
 from playwright.sync_api import sync_playwright
-from google import genai
 
 # --- ตั้งค่า URL และ API หลัก ---
 TARGET_URL = "https://www.dmc.tv/home/"
@@ -15,14 +14,14 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
+    # 🎯 รายชื่อโมเดลหลักยุคปัจจุบันที่เราจะส่งตรงเข้าท่อ Stable v1
     models_to_try = [
-        'gemini-2.5-flash', 
-        'gemini-2.0-flash', 
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-flash'
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro'
     ]
     
-    # 🧠 ปรับปรุงบรีฟ: ย่นย่อเนื้อหาความรู้ให้จบใน LINE ไม่ทิ้งลิงก์รกตา
+    # 🧠 บรีฟคัดกรองเนื้อหาและย่นย่อธรรมะให้จบใน LINE ตามที่คุณต้องการ
     prompt = f"""
     คุณคือนักข่าวสายบุญและบรรณาธิการอัจฉริยะ หน้าที่ของคุณคืออ่านข้อมูลตัวอักษรและลิงก์ดิบจากเว็บ DMC.tv
     แล้วนำมาคัดสรร เรียบเรียง และเขียนสรุปข่าวขึ้นมาใหม่ด้วยภาษาที่ไพเราะ สละสลวย นุ่มนวล ชวนให้อนุโมทนาบุญ 
@@ -49,30 +48,42 @@ def ask_gemini_to_summarize(raw_web_data):
     • (เรียบเรียงข่าวเชิญชวนทอดผ้าป่า ตอกเสาเข็ม บูชาข้าวพระ กิจกรรม Big Cleaning โดยเขียนอธิบายให้เห็นภาพความสำคัญของบุญนั้นๆ และบอกวันที่จัดงานให้ชัดเจน จัดมา 4-6 งานบุญเด่นๆ พร้อมลิงก์ร่วมบุญ)
 
     💡 [หมวดธรรมะน่าสนใจ & คลังความรู้]
-    • (จากข้อมูลคลังความรู้หรือวันสำคัญ เช่น วันเข้าพรรษา/นิทรรศการ ให้ทำการ "สรุปสาระสำคัญเนื้อๆ เน้นๆ" นำแก่นความรู้มาเขียนอธิบายย่นย่อให้อ่านแล้วเข้าใจ ได้ความรู้ประดับสติปัญญาทันทีใน LINE โดยไม่ต้องกดลิงก์ไปอ่านเพิ่มยาวๆ แล้วตบท้ายด้วยชื่อหัวข้อและลิงก์สั้นๆ เท่านั้น เช่น [คลังความรู้: วันเข้าพรรษาคืออะไร - ลิงก์...])
+    • (จากข้อมูลคลังความรู้หรือวันสำคัญ ให้ทำการ "สรุปสาระสำคัญเนื้อๆ เน้นๆ" นำแก่นความรู้มาเขียนอธิบายย่นย่อให้อ่านแล้วเข้าใจ ได้ความรู้ประดับสติปัญญาทันทีใน LINE โดยไม่ต้องกดลิงก์ไปอ่านเพิ่มยาวๆ แล้วตบท้ายด้วยชื่อหัวข้อและลิงก์สั้นๆ เท่านั้น เช่น [คลังความรู้: วันเข้าพรรษาคืออะไร - ลิงก์...])
 
     🎉 [บันทึกประมวลภาพงานบุญน่าอนุโมทนา]
     • (สรุปงานบุญเด่นๆ ที่เพิ่งจัดผ่านพ้นไป ยุบรวมเป็นก้อนเดียว ชวนให้ร่วมอนุโมทนาย้อนหลังอย่างมีความสุข ไม่เกิน 3 รายการ พร้อมแนบลิงก์รวมรูปภาพ)
     """
     
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    last_error = ""
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    headers = {"Content-Type": "application/json"}
     
+    # 🔄 วนลูปส่งตรงเข้าท่อ v1 และเปิดเผย Log ทุกตัว
     for model_name in models_to_try:
+        # กำหนด URL ไปที่ v1 ตรงๆ ไม่ผ่านตัวกลาง
+        url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        
         try:
-            print(f"🤖 กำลังทดลองเชื่อมต่อด้วยโมเดล: {model_name}...")
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt
-            )
-            print(f"✅ เชื่อมต่อสำเร็จ! ระบบเลือกใช้รุ่น: {model_name}")
-            return response.text.strip()
-        except Exception as e:
-            last_error = str(e)
-            print(f"⚠️ รุ่น {model_name} ไม่ตอบรับ (ระบบกำลังข้ามไปลองรุ่นถัดไป...)")
-            continue
+            print(f"📡 กำลังยิงข้อมูลตรงไปที่รุ่น: {model_name} (API v1)...")
+            res = requests.post(url, headers=headers, json=payload, timeout=30)
+            result_json = res.json()
             
-    return f"❌ ทดลองเชื่อมต่อครบทุกโมเดลแล้วแต่ยังเข้าไม่ได้ ข้อผิดพลาดล่าสุด: {last_error}"
+            # ถ้าสำเร็จและได้คำตอบกลับมา ให้ส่งผลลัพธ์ทันที
+            if res.status_code == 200 and 'candidates' in result_json:
+                ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
+                print(f"🎉 รุ่น {model_name} ทำงานสำเร็จอย่างงดงาม!")
+                return ai_response.strip()
+            
+            # ถ้าไม่สำเร็จ ให้พิมพ์ประจานข้อผิดพลาดของรุ่นนั้นๆ ออกมาดูเลยครับ
+            else:
+                print(f"❌ รุ่น {model_name} ปฏิเสธการทำงาน! รหัสสถานะ: {res.status_code}")
+                print(f"💬 ข้อความตอบกลับจาก Google: {result_json}\n")
+                
+        except Exception as e:
+            print(f"⚠️ เกิดข้อผิดพลาดทางเทคนิคกับรุ่น {model_name}: {e}\n")
+            
+    return "❌ ไม่สามารถใช้งานโมเดลใดๆ ได้เลย โปรดตรวจสอบรายละเอียดความพิดพลาดใน Log ด้านบนครับจ้ะ"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
@@ -93,7 +104,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบสมองกล (เวอร์ชันย่นย่อความรู้คลังธรรม) กำลังเริ่มงาน...")
+    print("🚀 บอทสายบุญ AI ตรงไปตรงมา (เวอร์ชันควบคุม URL v1) กำลังเริ่มงาน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -114,12 +125,14 @@ def main():
             raw_web_data = "\n".join(web_data_list[:150])
             browser.close()
             
-            print("🧠 ส่งต่อข้อมูลให้ AI เรียบเรียงสรุปแก่นธรรม...")
+            print("🧠 ส่งต่อข้อมูลดิบเข้าสู่ระบบคัดกรองของ Google AI...")
             final_report = ask_gemini_to_summarize(raw_web_data)
             
-            print("\n=== ผลลัพธ์จากบอท ===")
+            print("\n=== ผลลัพธ์สุดท้าย ===")
             print(final_report)
-            send_line_message(final_report)
+            
+            if not final_report.startswith("❌"):
+                send_line_message(final_report)
 
         except Exception as e:
             print(f"❌ ระบบภายนอกพังเนื่องจาก: {e}")
