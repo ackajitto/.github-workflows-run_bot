@@ -5,7 +5,6 @@ on:
   schedule:
     - cron: '0 13 * * *' # รันอัตโนมัติทุกวันตอน 2 ทุ่มไทย
   workflow_dispatch: # เปิดปุ่มให้เรากดสั่งรันเองได้
-
 jobs:
   run-bot:
     runs-on: ubuntu-latest
