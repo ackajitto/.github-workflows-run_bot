@@ -14,14 +14,14 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-    # 🎯 รายชื่อโมเดลหลักยุคปัจจุบันที่เราจะส่งตรงเข้าท่อ Stable v1
+    # 🎯 จัดทัพโมเดลใหม่: ดึงรุ่นเสถียรสูงสุดมารองรับ เพื่อหลบเลี่ยงอาการคนใช้งานหนาแน่น
     models_to_try = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-pro'
+        'gemini-1.5-flash',      # พระเอกสายเสถียร โควตากว้าง ไม่ค่อยติดขัด
+        'gemini-2.5-flash',      # รุ่นใหม่ล่าสุด (ใส่ไว้เผื่อจังหวะไหนคนใช้น้อยจะผ่านฉลุย)
+        'gemini-1.5-flash-8b'    # รุ่นเล็กพริกขี้หนูจอมอึด สำรองตัวสุดท้าย
     ]
     
-    # 🧠 บรีฟคัดกรองเนื้อหาและย่นย่อธรรมะให้จบใน LINE ตามที่คุณต้องการ
+    # 🧠 บรีฟย่นย่อเนื้อหาธรรมะและความรู้ให้จบใน LINE ไม่ต้องกดลิงก์ซับซ้อน
     prompt = f"""
     คุณคือนักข่าวสายบุญและบรรณาธิการอัจฉริยะ หน้าที่ของคุณคืออ่านข้อมูลตัวอักษรและลิงก์ดิบจากเว็บ DMC.tv
     แล้วนำมาคัดสรร เรียบเรียง และเขียนสรุปข่าวขึ้นมาใหม่ด้วยภาษาที่ไพเราะ สละสลวย นุ่มนวล ชวนให้อนุโมทนาบุญ 
@@ -59,35 +59,27 @@ def ask_gemini_to_summarize(raw_web_data):
     }
     headers = {"Content-Type": "application/json"}
     
-    # 🔄 วนลูปส่งตรงเข้าท่อ v1 และเปิดเผย Log ทุกตัว
     for model_name in models_to_try:
-        # กำหนด URL ไปที่ v1 ตรงๆ ไม่ผ่านตัวกลาง
         url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-        
         try:
-            print(f"📡 กำลังยิงข้อมูลตรงไปที่รุ่น: {model_name} (API v1)...")
+            print(f"📡 กำลังส่งข้อมูลตรงไปที่รุ่น: {model_name}...")
             res = requests.post(url, headers=headers, json=payload, timeout=30)
             result_json = res.json()
             
-            # ถ้าสำเร็จและได้คำตอบกลับมา ให้ส่งผลลัพธ์ทันที
             if res.status_code == 200 and 'candidates' in result_json:
                 ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
-                print(f"🎉 รุ่น {model_name} ทำงานสำเร็จอย่างงดงาม!")
+                print(f"🎉 รุ่น {model_name} ประมวลผลสำเร็จอย่างงดงาม!")
                 return ai_response.strip()
-            
-            # ถ้าไม่สำเร็จ ให้พิมพ์ประจานข้อผิดพลาดของรุ่นนั้นๆ ออกมาดูเลยครับ
             else:
-                print(f"❌ รุ่น {model_name} ปฏิเสธการทำงาน! รหัสสถานะ: {res.status_code}")
-                print(f"💬 ข้อความตอบกลับจาก Google: {result_json}\n")
-                
+                print(f"❌ รุ่น {model_name} ปฏิเสธ รหัสสถานะ: {res.status_code} | ข้อความ: {result_json}\n")
         except Exception as e:
-            print(f"⚠️ เกิดข้อผิดพลาดทางเทคนิคกับรุ่น {model_name}: {e}\n")
+            print(f"⚠️ เกิดข้อผิดพลาดกับรุ่น {model_name}: {e}\n")
             
-    return "❌ ไม่สามารถใช้งานโมเดลใดๆ ได้เลย โปรดตรวจสอบรายละเอียดความพิดพลาดใน Log ด้านบนครับจ้ะ"
+    return "❌ บอทกูเกิลปฏิเสธทุกโมเดลชั่วคราว โปรดตรวจสอบรายละเอียดข้อผิดพลาดใน Log อีกครั้งครับจ้ะ"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
-        print("⚠️ ไม่ได้ตั้งค่า LINE ให้ถูกต้อง")
+        print("⚠️ ไม่ได้ตั้งค่า LINE_TOKEN หรือ LINE_TARGET_ID")
         return
     headers = {
         "Content-Type": "application/json",
@@ -100,11 +92,13 @@ def send_line_message(msg):
     try:
         res = requests.post(LINE_API, headers=headers, json=payload)
         print(f"📲 สถานะการส่ง LINE: {res.status_code}")
+        if res.status_code != 200:
+            print(f"💬 สาเหตุที่ LINE ไม่ยอมรับข้อความ: {res.text}")
     except Exception as e:
-        print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
+        print(f"❌ ส่ง LINE ไม่สำเร็จเนื่องจากเครือข่าย: {e}")
 
 def main():
-    print("🚀 บอทสายบุญ AI ตรงไปตรงมา (เวอร์ชันควบคุม URL v1) กำลังเริ่มงาน...")
+    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันจัดทัพโมเดลสายเสถียร v1) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -125,14 +119,14 @@ def main():
             raw_web_data = "\n".join(web_data_list[:150])
             browser.close()
             
-            print("🧠 ส่งต่อข้อมูลดิบเข้าสู่ระบบคัดกรองของ Google AI...")
+            print("🧠 ส่งต่อข้อมูลดิบเข้าสู่ระบบคัดกรองแก่นธรรม...")
             final_report = ask_gemini_to_summarize(raw_web_data)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
             print(final_report)
             
-            if not final_report.startswith("❌"):
-                send_line_message(final_report)
+            # ยิงข้อความเข้า LINE เสมอ (ถ้าพังจะส่งข้อความแจ้งเตือนพังเข้า LINE ให้ทราบด้วยครับ)
+            send_line_message(final_report)
 
         except Exception as e:
             print(f"❌ ระบบภายนอกพังเนื่องจาก: {e}")
