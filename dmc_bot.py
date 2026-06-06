@@ -1,35 +1,68 @@
 import os
-import re
 import requests
 from playwright.sync_api import sync_playwright
 
-# --- ตั้งค่า URL และ LINE API ---
+# --- ตั้งค่า URL และ API ---
 TARGET_URL = "https://www.dmc.tv/home/"
 LINE_API = "https://api.line.me/v2/bot/message/push"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_TARGET_ID = os.environ.get("LINE_TARGET_ID")
 
-def clean_text(text):
-    """ฟังก์ชันเคลียร์ช่องว่างและจัดรูปแบบตัวอักษร"""
-    if not text:
-        return ""
-    text = re.sub(r'[\s\r\n]+', ' ', text).strip()
-    return text
+def ask_gemini_to_summarize(raw_web_data):
+    """ส่งข้อมูลเว็บดิบทั้งหมดไปให้ AI ของ Google ช่วยคัดกรองและเรียบเรียง"""
+    if not GEMINI_API_KEY:
+        return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets ระบบจึงใช้ AI เรียบเรียงไม่ได้"
+        
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    # 🎯 บรีฟคำสั่งภาษาไทย สั่งให้ AI จัดหมวดหมู่ตามที่คุณต้องการเป๊ะๆ
+    prompt = f"""
+    คุณคือนักข่าวสายบุญอัจฉริยะ หน้าที่ของคุณคืออ่านข้อมูลตัวอักษรดิบที่ได้จากการกวาดหน้าแรกของเว็บ DMC.tv 
+    แล้วนำมาคัดสรร เรียบเรียงใหม่ให้ได้ประโยชน์สูงสุดตามหมวดหมู่ด้านล่างนี้ โดยมีเงื่อนไขสำคัญคือ:
+    1. ห้ามเอาข้อมูลเก่าปีอื่นๆ (เช่น ปี 2567, 2568 หรือเดือนก่อนหน้า) คัดออกไปให้หมด เอาเฉพาะข้อมูลที่เป็นของเดือนปัจจุบัน (มิถุนายน 2569) และเดือนหน้า (กรกฎาคม 2569) เท่านั้น
+    2. หมวดโอวาทและหมวดธรรมะน่าสนใจ ให้เรียบเรียงเนื้อหาสรุปย่อมาเป็นประโยคคำสอนสั้นๆ อ่านเข้าใจง่ายทันที ไม่เอาแค่ชื่อลิงก์แหว่งๆ
+    3. หมวดทบทวนบุญ ให้ยุบรวมเป็นก้อนเดียว ไม่แยกในประเทศ/ต่างประเทศ คัดมาเฉพาะที่เด่นๆ น่าสนใจพอ
 
-def is_current_timeframe(text):
-    """ฟังก์ชันกรองเวลา: เอาเฉพาะเดือนปัจจุบัน (มิ.ย.) และเดือนหน้า (ก.ค.) ปี 2569 เท่านั้น"""
-    # ถ้าเจอปีเก่า คัดออกทันที
-    if any(yr in text for yr in ["2567", "2568", "2565", "67", "68"]):
-        return False
-    # ถ้าเจอเดือนเก่า คัดออก
-    if any(m in text for m in ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค."]):
-        return False
-    return True
+    ข้อมูลดิบจากหน้าเว็บ:
+    \"\"\"{raw_web_data[:20000]}\"\"\"
+
+    จงตอบกลับมาในรูปแบบข้อความเพื่อส่งเข้า LINE ตามโครงสร้างนี้เท่านั้น (ห้ามมีคำเกริ่นนำของ AI):
+
+    ✨ สรุปข่าวสารงานบุญดีเอ็มซีประจำวัน ✨
+
+    🙏 [โอวาทสั้นๆ จากหลวงพ่อธัมมชโย]
+    • (เขียนสรุปเนื้อหาคำสอนสั้นๆ 2-3 บรรทัดให้อ่านแล้วได้แง่คิดทันที)
+    🔗 อ่านธรรมะต่อที่: (ใส่ลิงก์ที่เกี่ยวข้องจากข้อมูลด้านบน ถ้าไม่มีให้ใส่เว็บหลัก dmc.tv)
+
+    🧡 [ข่าวงานบวช & โครงการอบรม]
+    • (รายชื่อโครงการบวชหรืออบรมที่อยู่ในช่วง มิ.ย. - ก.ค. 2569 พร้อมลิงก์)
+
+    💰 [งานบุญเชิญชวน & กิจกรรมเร็วๆ นี้]
+    • (รวมข่าวชวนทำบุญ ทอดผ้าป่า และกิจกรรมกำหนดการต่างๆ ที่กำลังจะเกิดขึ้น ปล่อยเนื้อหาได้เยอะจุใจ 5-8 รายการ พร้อมลิงก์)
+
+    💡 [หมวดธรรมะน่าสนใจ & คลังความรู้]
+    • (สรุปความรู้หรือบทความวันสำคัญ เช่น วันเข้าพรรษา โดยสรุปเนื้อหาสั้นๆ ให้ได้ความรู้เลย พร้อมลิงก์)
+
+    🎉 [ทบทวนบุญเด่นน่าอนุโมทนาย้อนหลัง]
+    • (สรุปงานบุญที่จัดผ่านไปแล้วรวมๆ กันแบบน่าสนใจ ไม่เกิน 3 รายการ พร้อมลิงก์)
+    """
+    
+    headers = {"Content-Type": "application/json"}
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    
+    try:
+        res = requests.post(url, headers=headers, json=payload)
+        result_json = res.json()
+        ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
+        return ai_response.strip()
+    except Exception as e:
+        return f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ AI: {e}"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
-        print("⚠️ ไม่ได้ตั้งค่า LINE ให้ถูกต้อง (ระบบจะพิมพ์ข้อความลง Log แทน)")
+        print("⚠️ ไม่ได้ตั้งค่า LINE ให้ถูกต้อง")
         return
     headers = {
         "Content-Type": "application/json",
@@ -46,7 +79,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญฉบับสมบูรณ์ (ล้างข้อมูลเก่า + ดึงเนื้อหาย่อ) กำลังเดินเครื่อง...")
+    print("🚀 บอทสายบุญระบบสมองกล AI กำลังเดินทางไปที่ dmc.tv...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -56,120 +89,29 @@ def main():
             page.goto(TARGET_URL, timeout=30000)
             page.wait_for_load_state("networkidle")
             
-            all_news = []
-            # กวาดทุกลิงก์ที่มีกล่องข้อความกำกับ
-            elements = page.locator('a').all()
-            
-            for el in elements:
-                title = clean_text(el.inner_text())
-                href = el.get_attribute("href")
-                
-                if title and len(title) > 12 and href and href.startswith("http"):
-                    if "facebook" in href or "twitter" in href or "youtube" in href:
-                        continue
+            # กวาดตัวอักษรและลิงก์ทั้งหมดบนหน้าแรกมารวมกันเป็นเนื้อความดิบก้อนเดียว
+            links = page.locator('a').all()
+            web_data_list = []
+            for link in links:
+                t = link.inner_text().strip()
+                h = link.get_attribute("href")
+                if t and h and h.startswith("http"):
+                    web_data_list.append(f"Content: {t} | Link: {h}")
                     
-                    # คัดกรองเวลา: ต้องเป็นเวลาปัจจุบันเท่านั้น
-                    if not is_current_timeframe(title):
-                        continue
-                        
-                    if {"title": title, "url": href} not in all_news:
-                        all_news.append({"title": title, "url": href})
-
-            # --- เริ่มต้นดึงคำสอนดิบย่อภายในหน้าแรกเพิ่มเติมเพื่อทำ Snippet สั้นๆ ---
-            # พยายามหาข้อความคำสอนที่ซ่อนอยู่ใน p หรือ span ของหน้าเว็บมาประดับหัวข้อ
-            paragraphs = page.locator('p, span.description, .summary').all()
-            raw_snippets = []
-            for p_el in paragraphs:
-                txt = clean_text(p_el.inner_text())
-                if len(txt) > 30 and len(txt) < 120 and is_current_timeframe(txt):
-                    if txt not in raw_snippets:
-                        raw_snippets.append(txt)
-
+            raw_web_data = "\n".join(web_data_list)
             browser.close()
-
-            # --- จัดหมวดหมู่ใหม่ตามคำสั่งปัจจุบัน ---
-            cat_luangphor = []   # 1. โอวาทหลวงพ่อธัมมชโย (เน้นดึงเนื้อความสั้นมารองรับ)
-            cat_ordination = []  # 2. ข่าวงานบวช
-            cat_combined = []    # 3. ยุบรวม: งานบุญเชิญชวน & กิจกรรมที่กำลังจะเกิดขึ้นเร็วๆ นี้
-            cat_dhamma = []      # 4. ธรรมะน่าสนใจ & คลังความรู้ (มีเนื้อความอธิบายสั้นๆ)
-            cat_done_all = []    # 5. ยุบรวม: ทบทวนบุญที่จัดไปแล้ว (ไม่แยกประเทศ)
-
-            # ตรรกะช่วยประดิษฐ์เนื้อหาสั้น (สร้างข้อความจำลองจากเนื้อหาหน้าเว็บเพื่อความสมบูรณ์)
-            default_quote = "การสร้างบารมีต้องทำเรื่อยไปเหมือนสายน้ำไหล ใจเราต้องใสอยู่เหนือกิเลสและการเปลี่ยนแปลงของโลก"
-            default_dhamma_desc = "ศึกษาอานิสงส์และข้อปฏิบัติเพื่อความบริสุทธิ์กายใจในวันเข้าพรรษาปีนี้"
-
-            for news in all_news:
-                t = news["title"]
-                u = news["url"]
-                
-                # ตัดวันที่รกๆ ท้ายข้อความออกเพื่อความสวยงาม
-                t_clean = re.sub(r'\s*\d{1,2}\s*[ก-๙]+\.?(?:\s*\d{2,4})?$', '', t).strip()
-
-                # 1. หมวดโอวาทหลวงพ่อธัมมชโย
-                if any(k in t for k in ["หลวงพ่อธัมมชโย", "โอวาท", "คุณครูไม่ใหญ่"]):
-                    snippet = raw_snippets[0] if len(raw_snippets) > 0 else default_quote
-                    item = f"• \"{snippet[:80]}...\"\n🔗 ธรรมะสอนใจ: {u}"
-                    if item not in cat_luangphor:
-                        cat_luangphor.append(item)
-                    continue
-
-                # 2. หมวดงานบวช/โครงการอบรม
-                if any(k in t for k in ["บวช", "บรรพชา", "อุปสมบท", "ธรรมทายาท", "นาคหลวง"]):
-                    item = f"• {t_clean}\n🔗 รายละเอียด: {u}"
-                    if item not in cat_ordination:
-                        cat_ordination.append(item)
-                    continue
-
-                # 3. ยุบรวม: งานบุญเชิญชวน + ข่าวกิจกรรมเร็วๆ นี้ (ปล่อยจำนวนเยอะได้ตามบรีฟ)
-                if any(k in t for k in ["ร่วมบุญ", "ทอดผ้าป่า", "สร้าง", "หล่อพระ", "เจ้าภาพ", "โครงการ", "ขอเชิญ", "นิทรรศการ", "กำหนดการ"]):
-                    item = f"• {t_clean}\n🔗 ร่วมบุญ/กำหนดการ: {u}"
-                    if item not in cat_combined:
-                        cat_combined.append(item)
-                    continue
-
-                # 4. หมวดธรรมะน่าสนใจ & คลังความรู้ (ดึงเศษคำมาแสดงสั้นๆ)
-                if any(k in t for k in ["ประวัติ", "วันวิสาขบูชา", "วันเข้าพรรชา", "คืออะไร", "ความจริงของชีวิต", "บทความ"]):
-                    desc = raw_snippets[1] if len(raw_snippets) > 1 else default_dhamma_desc
-                    item = f"• {t_clean}\n  📝 สาระย่อ: {desc[:60]}...\n🔗 อ่านความรู้: {u}"
-                    if item not in cat_dhamma:
-                        cat_dhamma.append(item)
-                    continue
-
-                # 5. ยุบรวม: ทบทวนบุญที่จัดไปแล้วทั้งหมด
-                if any(k in t for k in ["จัดพิธี", "จัดงานบุญ", "ถวายแล้ว", "ต้อนรับ", "ภาพงานบุญ"]):
-                    item = f"• {t_clean}\n🔗 ประมวลภาพ: {u}"
-                    if item not in cat_done_all:
-                        cat_done_all.append(item)
-
-            # --- ประกอบร่างข้อความส่งเข้า LINE ---
-            report = "✨ สรุปข่าวสารงานบุญดีเอ็มซีประจำวัน ✨\n\n"
             
-            report += "🙏 [โอวาทสั้นๆ จากหลวงพ่อธัมมชโย]\n"
-            report += "\n".join(cat_luangphor[:1]) if cat_luangphor else f"• \"{default_quote}\"\n🔗 ดูโอวาทเพิ่มเติม: https://www.dmc.tv/home/n"
-            report += "\n\n"
-
-            report += "🧡 [ข่าวงานบวช & โครงการอบรม]\n"
-            report += "\n".join(cat_ordination[:3]) if cat_ordination else "• ไม่มีอัปเดตโครงการบวชใหม่ในวันนี้\n"
-            report += "\n\n"
-
-            # หมวดรวมที่ปล่อยเนื้อหาได้เยอะจุใจ (ตั้งไว้สูงสุด 8 รายการ)
-            report += "💰 [งานบุญเชิญชวน & กิจกรรมเร็วๆ นี้]\n"
-            report += "\n".join(cat_combined[:8]) if cat_combined else "• ไม่มีอัปเดตงานบุญหรือกิจกรรมใหม่ช่วงนี้\n"
-            report += "\n\n"
-
-            report += "💡 [หมวดธรรมะน่าสนใจ & คลังความรู้]\n"
-            report += "\n".join(cat_dhamma[:2]) if cat_dhamma else f"• วันเข้าพรรษา 2569\n  📝 สาระย่อ: {default_dhamma_desc}\n🔗 อ่านความรู้: https://www.dmc.tv/home/n"
-            report += "\n\n"
-
-            report += "🎉 [ทบทวนบุญเด่นน่าอนุโมทนาย้อนหลัง]\n"
-            report += "\n".join(cat_done_all[:3]) if cat_done_all else "• ไม่มีข่าวทบทวนบุญอัปเดตในวันนี้"
-
-            # ส่งออกทาง LINE
-            print(report)
-            send_line_message(report.strip())
+            # ส่งเนื้อหาทั้งหมดให้ AI สรุปตามบรีฟ
+            print("🧠 กำลังส่งข้อมูลให้ AI ประมวลผลและคัดกรองวันเวลา...")
+            final_report = ask_gemini_to_summarize(raw_web_data)
+            
+            # ส่งเข้า LINE
+            print("\n=== ผลลัพธ์จาก AI ===")
+            print(final_report)
+            send_line_message(final_report)
 
         except Exception as e:
-            print(f"❌ บอททำงานพลาดเนื่องจาก: {e}")
+            print(f"❌ พังเนื่องจาก: {e}")
             if 'browser' in locals():
                 browser.close()
 
