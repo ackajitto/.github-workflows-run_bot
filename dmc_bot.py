@@ -15,11 +15,10 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-    # 🎯 เจาะจงใช้รุ่นหลัก 2.5-flash ที่ใช้ได้จริงตัวเดียวเลยครับ
     model_name = 'gemini-2.5-flash'
     url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
     
-    # 🧠 บรีฟย่นย่อเนื้อหาธรรมะและความรู้ให้จบใน LINE ไม่ต้องกดลิงก์ซับซ้อนตามที่คุณต้องการ
+    # 🧠 บรีฟย่นย่อเนื้อหาธรรมะและความรู้ให้จบใน LINE ตามที่คุณต้องการ
     prompt = f"""
     คุณคือนักข่าวสายบุญและบรรณาธิการอัจฉริยะ หน้าที่ของคุณคืออ่านข้อมูลตัวอักษรและลิงก์ดิบจากเว็บ DMC.tv
     แล้วนำมาคัดสรร เรียบเรียง และเขียนสรุปข่าวขึ้นมาใหม่ด้วยภาษาที่ไพเราะ สละสลวย นุ่มนวล ชวนให้อนุโมทนาบุญ 
@@ -57,10 +56,10 @@ def ask_gemini_to_summarize(raw_web_data):
     }
     headers = {"Content-Type": "application/json"}
     
-    # 🔄 ระบบตื๊อซ้ำ 3 รอบ (หากเจออาการคนแน่นคิวเต็ม 503 หรือ 429)
-    for attempt in range(3):
+    # 🔄 เพิ่มรอบตื๊อเป็น 5 รอบ และใช้สูตรขยับเวลาหนีรถติด (15, 30, 45, 60 วินาที)
+    for attempt in range(5):
         try:
-            print(f"📡 กำลังส่งข้อมูลไปที่รุ่น: {model_name} (รอบที่ {attempt + 1}/3)...")
+            print(f"📡 กำลังส่งข้อมูลก้อนกระชับไปที่รุ่น: {model_name} (รอบที่ {attempt + 1}/5)...")
             res = requests.post(url, headers=headers, json=payload, timeout=30)
             result_json = res.json()
             
@@ -70,17 +69,18 @@ def ask_gemini_to_summarize(raw_web_data):
                 return ai_response.strip()
                 
             elif res.status_code in [503, 429]:
-                print(f"⏳ เจอสถานะ {res.status_code} (คนแน่น/ติดคิวชั่วคราว) ขอพัก 10 วินาทีแล้วลองใหม่...")
-                time.sleep(10)
+                wait_time = (attempt + 1) * 15  # เพิ่มเวลาพักรอรอบถัดไปเรื่อยๆ เพื่อหลบช่วงคนแน่น
+                print(f"⏳ เจอสถานะ {res.status_code} คนแน่นคิวเต็ม ขอเว้นระยะ {wait_time} วินาทีแล้วลองใหม่...")
+                time.sleep(wait_time)
                 continue
             else:
                 print(f"❌ ปฏิเสธการทำงาน รหัส: {res.status_code} | ข้อความ: {result_json}")
                 break
         except Exception as e:
             print(f"⚠️ เกิดข้อผิดพลาดทางเทคนิค: {e}")
-            time.sleep(5)
+            time.sleep(10)
             
-    return "❌ บอทกูเกิลติดขัดเนื่องจากคนใช้งานหนาแน่นมากเกินไปจริงๆ โปรดรันใหม่อีกครั้งในภายหลังครับจ้ะ"
+    return "❌ บอทกูเกิลติดขัดเนื่องจากคนใช้งานหนาแน่นมากเกินไปจริงๆ โปรดกดรันใหม่อีกครั้งในภายหลังครับจ้ะ"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
@@ -101,7 +101,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันระบบตื๊ออัตโนมัติ 2.5-flash) เริ่มรัน...")
+    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชัน Diet ข้อมูล + เพิ่มพลังตื๊อ 5 รอบ) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -119,7 +119,8 @@ def main():
                 if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
                     web_data_list.append(f"หัวข้อ: {t} | ลิงก์: {h}")
                     
-            raw_web_data = "\n".join(web_data_list[:150])
+            # 🎯 [จุดสำคัญ] ลดขนาดข้อมูลเหลือ 50 รายการแรก เพื่อให้ประมวลผลง่าย คิวผ่านฉลุย
+            raw_web_data = "\n".join(web_data_list[:50])
             browser.close()
             
             print("🧠 ส่งต่อข้อมูลดิบเข้าสู่ระบบคัดกรองแก่นธรรม...")
