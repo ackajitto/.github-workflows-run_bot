@@ -15,10 +15,7 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-    model_name = 'gemini-2.5-flash'
-    url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-    
-    # 🧠 บรีฟคัดเฉพาะหัวขื้องานบุญอนาคต (มิ.ย. - ก.ค. 2569) กระชับขั้นสุด
+    # 🧠 บรีฟแบบมินิมอลขั้นสุด: คัดเน้นๆ เฉพาะหัวข้องานบุญอนาคตเดือนนี้และเดือนหน้า
     prompt = f"""
     คุณคือผู้ช่วยสรุปงานบุญ หน้าที่ของคุณคือคัดเลือกหัวข้อข่าวสารงานบุญที่จะเกิดขึ้นในเดือนนี้ (มิถุนายน 2569) และเดือนหน้า (กรกฎาคม 2569) จากรายชื่อหัวข้อที่กำหนดให้
     และจัดหมวดหมู่ให้ออกมาเป็นข้อความสั้นๆ กระชับ ได้ใจความชวนอนุโมทนาบุญ (แต่ละข้อห้ามเกิน 1-2 บรรทัด)
@@ -43,35 +40,44 @@ def ask_gemini_to_summarize(raw_web_data):
     • (หากมีหัวข้อโครงการบวชหรืออบรมช่วงเข้าพรรษา สรุปสั้นๆ 1 ข้อ + [รายละเอียด: ลิงก์ตรง])
     """
     
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     headers = {"Content-Type": "application/json"}
     
-    # ระบบตื๊อ 3 รอบ เผื่อเจอจังหวะคนแน่นคิวสั้น
-    for attempt in range(3):
-        try:
-            print(f"📡 ส่งข้อมูลเฉพาะหัวข้อไปที่รุ่น: {model_name} (รอบที่ {attempt + 1}/3)...")
-            res = requests.post(url, headers=headers, json=payload, timeout=30)
-            result_json = res.json()
-            
-            if res.status_code == 200 and 'candidates' in result_json:
-                ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
-                print("🎉 AI สรุปหัวข้อข่าวสารงานบุญสำเร็จ!")
-                return ai_response.strip()
+    # 🎯 แผนจัดทัพท่อส่งและโมเดลแบบยืดหยุ่นสูง (ท่อ v1 และ v1beta)
+    api_configs = [
+        {"version": "v1beta", "model": "gemini-2.5-flash"}, # ท่อสำรอง v1beta รุ่นใหม่ (เสถียรสุดตอนนี้)
+        {"version": "v1beta", "model": "gemini-1.5-flash"}, # ท่อสำรอง v1beta รุ่นพี่ใหญ่จอมอึด
+        {"version": "v1", "model": "gemini-2.5-flash"}       # ท่อหลัก v1 รุ่นใหม่
+    ]
+    
+    for config in api_configs:
+        version = config["version"]
+        model = config["model"]
+        url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        
+        for attempt in range(2):  # ลองตื๊อเบิ้ล 2 รอบต่อหนึ่งโครงข่าย
+            try:
+                print(f"📡 กำลังเจาะท่อ {version} ใช้รุ่น: {model} (รอบที่ {attempt + 1}/2)...")
+                res = requests.post(url, headers=headers, json=payload, timeout=30)
+                result_json = res.json()
                 
-            elif res.status_code in [503, 429]:
-                print(f"⏳ คิวแน่นชั่วคราว รอ 10 วินาที...")
-                time.sleep(10)
-                continue
-            else:
-                print(f"❌ ปฏิเสธด้วยรหัส: {res.status_code}")
-                break
-        except Exception as e:
-            print(f"⚠️ ข้อผิดพลาดเทคนิค: {e}")
-            time.sleep(5)
-            
-    return "❌ บอทกูเกิลติดขัดชั่วคราว โปรดรันใหม่อีกครั้งในภายหลังครับจ้ะ"
+                if res.status_code == 200 and 'candidates' in result_json:
+                    ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
+                    print(f"🎉 เจาะทะลวงสำเร็จด้วยท่อ {version} รุ่น {model}!")
+                    return ai_response.strip()
+                    
+                elif res.status_code in [503, 429]:
+                    print(f"⏳ ท่อติดขัดชั่วคราว (รหัส {res.status_code}) ขอพักหนีไฟวอลล์ 15 วินาที...")
+                    time.sleep(15)
+                    continue
+                else:
+                    print(f"⏩ ข้ามไปแผนสำรองถัดไป (เจอข้อความ: {result_json.get('error', {}).get('message', 'Unknown')})")
+                    break
+            except Exception as e:
+                print(f"⚠️ เครือข่ายแกว่ง: {e}")
+                time.sleep(5)
+                
+    return "❌ พญามารปิดกั้นทุกท่อส่งชั่วคราว โปรดกดรันใหม่อีกครั้งในภายหลังครับจ้ะ"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
@@ -92,7 +98,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญเน้นหัวข้อ (มินิมอลดาต้า) เริ่มรัน...")
+    print("🚀 บอทสายบุญมินิมอล (เวอร์ชันท่อส่งคู่ v1 + v1beta) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -108,20 +114,18 @@ def main():
                 t = link.inner_text().strip()
                 h = link.get_attribute("href")
                 if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
-                    # เก็บรวบรวมในรูปแบบที่กระชับที่สุดเพื่อเซฟเนื้อที่ข้อมูล
                     web_data_list.append(f"หัวข้อ: {t} -> ลิงก์: {h}")
                     
-            # 🎯 คัดเฉพาะหัวข้อยอดนิยม 35 อันดับแรกหน้าเว็บ ดาต้าเบาหวิวเหมือนปุยเมฆ
-            raw_web_data = "\n".join(web_data_list[:35])
+            # คัดมาแค่ 30 หัวข้อแรกหน้าเว็บ ข้อมูลเบาหวิวผ่านด่านตรวจง่ายแน่นอน
+            raw_web_data = "\n".join(web_data_list[:30])
             browser.close()
             
-            print("🧠 ส่งต่อหัวข้อข่าวเข้าสู่ระบบประมวลผล...")
+            print("🧠 ส่งต่อหัวข้อข่าวเข้าสู่ระบบสับเปลี่ยนท่ออัจฉริยะ...")
             final_report = ask_gemini_to_summarize(raw_web_data)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
             print(final_report)
             
-            # ส่งเข้า LINE 
             send_line_message(final_report)
 
         except Exception as e:
