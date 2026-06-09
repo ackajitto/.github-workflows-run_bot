@@ -10,35 +10,43 @@ LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_TARGET_ID = os.environ.get("LINE_TARGET_ID")
 
 def filter_and_format_merit_news(web_data_list):
-    # 🎯 คีย์เวิร์ดคัดกรองงานบุญและโครงการช่วงเดือน มิ.ย. - ก.ค.
-    merit_keywords = ['บุญ', 'ผ้าป่า', 'บวช', 'อุปสมบท', 'อบรม', 'บูชาข้าวพระ', 'หล่อพระ', 'เสาเข็ม', 'ปฏิบัติธรรม', 'มิ.ย.', 'ก.ค.', 'มิถุนายน', 'กรกฎาคม']
+    # 🟢 คีย์เวิร์ดเฉพาะงานบุญอนาคต / การเชิญชวนร่วมบุญ / โครงการเปิดรับสมัคร
+    merit_keywords = ['ผ้าป่า', 'บูชาข้าวพระ', 'หล่อพระ', 'ตอกเสาเข็ม', 'สร้างเจดีย์', 'เจ้าภาพ', 'ขอเชิญ', 'เชิญชวน']
+    study_keywords = ['บรรพชา', 'อุปสมบท', 'อบรม', 'รับสมัคร']
+    
+    # 🔴 คีย์เวิร์ดต้องห้าม (คัดทิ้งทันที: ข่าวอดีตที่ทำเสร็จแล้ว, สื่อบันเทิง, พิธีมอบรางวัล)
+    banned_keywords = ['mv', 'official', 'เพลง', 'เกียรติบัตร', 'ประมวลภาพ', 'ภาพงานบุญ', 'ถวายแล้ว', 'ผ่านพ้น', 'ภาพข่าว']
     
     merit_events = []
     ordination_events = []
     seen_titles = set()
     
     for title, href in web_data_list:
-        title_lower = title.lower()
+        # ล้างเศษเว้นวรรคและการขึ้นบรรทัดใหม่แปลกๆ จากหน้าเว็บให้เรียบเนียน
+        clean_title = " ".join(title.split())
+        title_lower = clean_title.lower()
         
-        # กรองเฉพาะหัวข้อที่มีคีย์เวิร์ดงานบุญ
-        if any(kw in title_lower for kw in merit_keywords):
-            if title in seen_titles:
-                continue
-            seen_titles.add(title)
+        # 1. ด่านแรก: ถ้ามีคำต้องห้าม ให้โยนทิ้งทันที
+        if any(b_kw in title_lower for b_kw in banned_keywords):
+            continue
             
-            # 🧡 แยกเข้าหมวดโครงการบวช / อบรม
-            if any(kw in title_lower for kw in ['บวช', 'อุปสมบท', 'อบรม', 'เยาวชน']):
-                ordination_events.append(f"• {title}\n  [รายละเอียด: {href}]")
-            # 💰 แยกเข้าหมวดงานบุญสร้างบารมีทั่วไป
-            else:
-                merit_events.append(f"• {title}\n  [ร่วมบุญ: {href}]")
+        if clean_title in seen_titles:
+            continue
+            
+        # 2. ด่านสอง: คัดกรองเข้าหมวดหมู่เฉพาะงานบุญที่ใช่จริงๆ
+        if any(kw in title_lower for kw in study_keywords):
+            seen_titles.add(clean_title)
+            ordination_events.append(f"• {clean_title}\n  [รายละเอียด: {href}]")
+        elif any(kw in title_lower for kw in merit_keywords):
+            seen_titles.add(clean_title)
+            merit_events.append(f"• {clean_title}\n  [ร่วมบุญ: {href}]")
                 
-    # คัดเลือกมาแสดงหมวดละ 4-5 รายการแรกที่สดใหม่ที่สุดเพื่อความกระชับ
+    # เลือกแสดงเฉพาะตัวเด่นๆ หมวดละ 4-5 รายการเพื่อความกระชับ
     merit_text = "\n".join(merit_events[:5]) if merit_events else "• ติดตามข่าวสารงานบุญเพิ่มเติมได้ที่หน้าเว็บไซต์จ้ะ"
     ordination_text = "\n".join(ordination_events[:3]) if ordination_events else "• ติดตามโครงการบวชประจำปีได้ที่หน้าเว็บไซต์จ้ะ"
     
-    # ประกอบร่างข้อความมินิมอลส่งเข้า LINE
-    message = f"""✨ ปฏิทินงานบุญสร้างบารมี DMC (ระบบตรง ไม่ใช้ AI) ✨
+    # ประกอบร่างข้อความส่งเข้า LINE แบบคลีนๆ
+    message = f"""✨ ปฏิทินงานบุญสร้างบารมี DMC ✨
 
 💰 [ข่าวสารงานบุญเชิญชวนร่วมทำบุญ]
 {merit_text}
@@ -46,7 +54,7 @@ def filter_and_format_merit_news(web_data_list):
 🧡 [โครงการบวช & อบรมเยาวชน]
 {ordination_text}
 
-(ข้อมูลส่งตรงจากหน้าแรกเว็บ อ่านง่าย ลิงก์ตรงเป๊ะ 100% ครับจ้ะ)"""
+(ระบบคัดกรองเฉพาะงานบุญและโครงการเปิดรับสมัคร ลิงก์ตรงเป๊ะ 100% ครับจ้ะ)"""
     return message
 
 def send_line_message(msg):
@@ -68,7 +76,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบตรง (เสถียรภาพสูงสุด 100%) เริ่มรัน...")
+    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันกรองอัจฉริยะไร้คำมารบกวน) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -83,19 +91,17 @@ def main():
             for link in links:
                 t = link.inner_text().strip()
                 h = link.get_attribute("href")
-                # คัดกรองลิงก์ของ dmc ที่มีความยาวหัวข้อเหมาะสม
                 if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
                     web_data_list.append((t, h))
                     
             browser.close()
             
-            print("🧠 กำลังประมวลผลจัดหมวดหมู่ด้วยระบบรหัส...")
+            print("🧠 กำลังสแกนหาเฉพาะเนื้อหาแก่นบุญ...")
             final_report = filter_and_format_merit_news(web_data_list)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
             print(final_report)
             
-            # ส่งตรงเข้า LINE ทันที
             send_line_message(final_report)
 
         except Exception as e:
