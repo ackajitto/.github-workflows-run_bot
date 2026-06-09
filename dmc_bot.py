@@ -2,8 +2,8 @@ import os
 import requests
 from playwright.sync_api import sync_playwright
 
-# --- ตั้งค่า URL และ API หลัก ---
-TARGET_URL = "https://www.dmc.tv/home/"
+# --- 🎯 แก้ไข URL ตรงนี้ให้เข้าหน้าแรกโดยตรง ไม่หลงทางแน่นอน ---
+TARGET_URL = "https://www.dmc.tv/"
 LINE_API = "https://api.line.me/v2/bot/message/push"
 
 LINE_TOKEN = os.environ.get("LINE_TOKEN")
@@ -22,18 +22,15 @@ def filter_and_format_merit_news(web_data_list):
     seen_titles = set()
     
     for title, href in web_data_list:
-        # ล้างเศษเว้นวรรคและการขึ้นบรรทัดใหม่แปลกๆ จากหน้าเว็บให้เรียบเนียน
         clean_title = " ".join(title.split())
         title_lower = clean_title.lower()
         
-        # 1. ด่านแรก: ถ้ามีคำต้องห้าม ให้โยนทิ้งทันที
         if any(b_kw in title_lower for b_kw in banned_keywords):
             continue
             
         if clean_title in seen_titles:
             continue
             
-        # 2. ด่านสอง: คัดกรองเข้าหมวดหมู่เฉพาะงานบุญที่ใช่จริงๆ
         if any(kw in title_lower for kw in study_keywords):
             seen_titles.add(clean_title)
             ordination_events.append(f"• {clean_title}\n  [รายละเอียด: {href}]")
@@ -41,11 +38,9 @@ def filter_and_format_merit_news(web_data_list):
             seen_titles.add(clean_title)
             merit_events.append(f"• {clean_title}\n  [ร่วมบุญ: {href}]")
                 
-    # เลือกแสดงเฉพาะตัวเด่นๆ หมวดละ 4-5 รายการเพื่อความกระชับ
     merit_text = "\n".join(merit_events[:5]) if merit_events else "• ติดตามข่าวสารงานบุญเพิ่มเติมได้ที่หน้าเว็บไซต์จ้ะ"
     ordination_text = "\n".join(ordination_events[:3]) if ordination_events else "• ติดตามโครงการบวชประจำปีได้ที่หน้าเว็บไซต์จ้ะ"
     
-    # ประกอบร่างข้อความส่งเข้า LINE แบบคลีนๆ
     message = f"""✨ ปฏิทินงานบุญสร้างบารมี DMC ✨
 
 💰 [ข่าวสารงานบุญเชิญชวนร่วมทำบุญ]
@@ -76,7 +71,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันกรองอัจฉริยะไร้คำมารบกวน) เริ่มรัน...")
+    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันแก้ทางเข้าหน้าแรก) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
