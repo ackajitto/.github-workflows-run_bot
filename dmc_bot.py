@@ -4,7 +4,7 @@ import re
 import requests
 from playwright.sync_api import sync_playwright
 
-# --- 🎯 แก้ไขทางเข้าตรงนี้ให้เข้าหน้าแรกโดยตรง ไม่หลงทาง ---
+# --- 🎯 ตั้งค่า URL และ API หลัก ---
 TARGET_URL = "https://www.dmc.tv/"
 LINE_API = "https://api.line.me/v2/bot/message/push"
 
@@ -81,15 +81,17 @@ def ask_gemini_to_summarize(raw_web_data):
                 print("🎉 AI ประมวลผลสำเร็จ ลิงก์แม่นยำ!")
                 return ai_response.strip()
                 
-            elif res.status_code in [503, 429]:
-                print(f"⏳ คิวเต็มชั่วคราว รอ 10 วินาที...")
+            elif res.status_code in [429, 500, 503]:
+                print(f"⏳ เซิร์ฟเวอร์กูเกิลแน่นขัดขืนชั่วคราว (รหัส {res.status_code}) รอ 10 วินาทีแล้วลองใหม่...")
                 time.sleep(10)
                 continue
             else:
-                print(f"❌ พังด้วยรหัส: {res.status_code}")
+                # 🎯 [จุดปรับปรุง] พ่นข้อความแจ้งเตือนละเอียดออกทางหน้าจอ Log ของ GitHub
+                print(f"❌ พังด้วยรหัสสถานะ: {res.status_code}")
+                print(f"📄 สาเหตุเชิงลึกจากกูเกิล: {res.text}")
                 break
         except Exception as e:
-            print(f"⚠️ ข้อผิดพลาดเทคนิค: {e}")
+            print(f"⚠️ ข้อผิดพลาดทางเทคนิคระลอก {attempt + 1}: {e}")
             time.sleep(5)
             
     return "❌ บอทกูเกิลติดขัดชั่วคราว โปรดกดรันใหม่อีกครั้งครับจ้ะ"
@@ -113,7 +115,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันป้องกันลิงก์เอ๋อและกันภัย Bad Gateway) เริ่มรัน...")
+    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันดัก Log ละเอียดป้องกันภัยเงียบ) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -137,7 +139,7 @@ def main():
             print("🧠 ส่งต่อข้อมูลดิบเข้าสู่ระบบคัดกรองแก่นธรรม...")
             ai_report = ask_gemini_to_summarize(raw_web_data)
             
-            # 🎯 [จุดสำคัญ] ทำการกรองและล้างลิงก์บทความที่ AI ส่งกลับมา ป้องกันเซิร์ฟเวอร์ปลายทางล่ม
+            # ทำการกรองและล้างลิงก์บทความที่ AI ส่งกลับมา ป้องกันเซิร์ฟเวอร์ปลายทางล่ม (Bad Gateway)
             final_report = clean_final_message(ai_report)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
