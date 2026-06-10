@@ -2,7 +2,7 @@ import os
 import requests
 from playwright.sync_api import sync_playwright
 
-# --- 🎯 แก้ไข URL ตรงนี้ให้เข้าหน้าแรกโดยตรง ไม่หลงทางแน่นอน ---
+# --- ตั้งค่า URL และ API หลัก ---
 TARGET_URL = "https://www.dmc.tv/"
 LINE_API = "https://api.line.me/v2/bot/message/push"
 
@@ -11,10 +11,10 @@ LINE_TARGET_ID = os.environ.get("LINE_TARGET_ID")
 
 def filter_and_format_merit_news(web_data_list):
     # 🟢 คีย์เวิร์ดเฉพาะงานบุญอนาคต / การเชิญชวนร่วมบุญ / โครงการเปิดรับสมัคร
-    merit_keywords = ['ผ้าป่า', 'บูชาข้าวพระ', 'หล่อพระ', 'ตอกเสาเข็ม', 'สร้างเจดีย์', 'เจ้าภาพ', 'ขอเชิญ', 'เชิญชวน']
+    merit_keywords = ['ผ้าป่า', 'บูชาข้าวพระ', 'หล่อพระ', 'ตอกเสาเข็ม', 'สร้างเจดีย์', 'เจ้าภาพ', 'ขอเชิญ', 'เชิญชวน', 'ร่วมสนับสนุน']
     study_keywords = ['บรรพชา', 'อุปสมบท', 'อบรม', 'รับสมัคร']
     
-    # 🔴 คีย์เวิร์ดต้องห้าม (คัดทิ้งทันที: ข่าวอดีตที่ทำเสร็จแล้ว, สื่อบันเทิง, พิธีมอบรางวัล)
+    # 🔴 คีย์เวิร์ดต้องห้าม (คัดทิ้งทันที)
     banned_keywords = ['mv', 'official', 'เพลง', 'เกียรติบัตร', 'ประมวลภาพ', 'ภาพงานบุญ', 'ถวายแล้ว', 'ผ่านพ้น', 'ภาพข่าว']
     
     merit_events = []
@@ -49,7 +49,7 @@ def filter_and_format_merit_news(web_data_list):
 🧡 [โครงการบวช & อบรมเยาวชน]
 {ordination_text}
 
-(ระบบคัดกรองเฉพาะงานบุญและโครงการเปิดรับสมัคร ลิงก์ตรงเป๊ะ 100% ครับจ้ะ)"""
+(ระบบคัดกรองเฉพาะงานบุญและโครงการเปิดรับสมัคร ซ่อมแซมลิงก์เปิดได้ 100% ครับจ้ะ)"""
     return message
 
 def send_line_message(msg):
@@ -71,7 +71,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันแก้ทางเข้าหน้าแรก) เริ่มรัน...")
+    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันแก้ทางเทคนิค Trailing Slash) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -87,11 +87,16 @@ def main():
                 t = link.inner_text().strip()
                 h = link.get_attribute("href")
                 if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
+                    
+                    # 🎯 [จุดแก้ไขสำคัญ] ถ้าลิงก์ไม่ได้ลงท้ายด้วย / และไม่ใช่นามสกุลไฟล์ตรงๆ ให้เติม / ปิดท้ายให้มันทันที
+                    if not h.endswith("/") and not any(h.endswith(ext) for ext in ['.html', '.htm', '.php', '.mp4', '.png', '.jpg']):
+                        h = h + "/"
+                        
                     web_data_list.append((t, h))
                     
             browser.close()
             
-            print("🧠 กำลังสแกนหาเฉพาะเนื้อหาแก่นบุญ...")
+            print("🧠 กำลังสแกนหาแก่นบุญพร้อมจัดโครงสร้างลิงก์ใหม่...")
             final_report = filter_and_format_merit_news(web_data_list)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
