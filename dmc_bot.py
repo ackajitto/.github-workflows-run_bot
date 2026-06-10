@@ -1,57 +1,77 @@
 import os
+import time
 import requests
 from playwright.sync_api import sync_playwright
 
 # --- ตั้งค่า URL และ API หลัก ---
-TARGET_URL = "https://www.dmc.tv/"
+TARGET_URL = "https://www.dmc.tv/home/"
 LINE_API = "https://api.line.me/v2/bot/message/push"
 
 LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_TARGET_ID = os.environ.get("LINE_TARGET_ID")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def filter_and_format_merit_news(web_data_list):
-    # 🟢 คีย์เวิร์ดเฉพาะงานบุญอนาคต / การเชิญชวนร่วมบุญ / โครงการเปิดรับสมัคร
-    merit_keywords = ['ผ้าป่า', 'บูชาข้าวพระ', 'หล่อพระ', 'ตอกเสาเข็ม', 'สร้างเจดีย์', 'เจ้าภาพ', 'ขอเชิญ', 'เชิญชวน', 'ร่วมสนับสนุน']
-    study_keywords = ['บรรพชา', 'อุปสมบท', 'อบรม', 'รับสมัคร']
-    
-    # 🔴 คีย์เวิร์ดต้องห้าม
-    banned_keywords = ['mv', 'official', 'เพลง', 'เกียรติบัตร', 'ประมวลภาพ', 'ภาพงานบุญ', 'ถวายแล้ว', 'ผ่านพ้น', 'ภาพข่าว']
-    
-    merit_events = []
-    ordination_events = []
-    seen_titles = set()
-    
-    for title, href in web_data_list:
-        clean_title = " ".join(title.split())
-        title_lower = clean_title.lower()
+def ask_gemini_to_summarize(raw_web_data):
+    if not GEMINI_API_KEY:
+        return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-        if any(b_kw in title_lower for b_kw in banned_keywords):
-            continue
-            
-        if clean_title in seen_titles:
-            continue
-            
-        # 🎯 [ปรับแต่งที่นี่] ถอดวงเล็บ [] ออกทั้งหมด เพื่อไม่ให้ LINE แปลงลิงก์เพี้ยนเป็น %5D
-        if any(kw in title_lower for kw in study_keywords):
-            seen_titles.add(clean_title)
-            ordination_events.append(f"• {clean_title}\n  🔗 รายละเอียด: {href}")
-        elif any(kw in title_lower for kw in merit_keywords):
-            seen_titles.add(clean_title)
-            merit_events.append(f"• {clean_title}\n  🔗 ลิงก์ร่วมบุญ: {href}")
-                
-    merit_text = "\n".join(merit_events[:5]) if merit_events else "• ติดตามข่าวสารงานบุญเพิ่มเติมได้ที่หน้าเว็บไซต์จ้ะ"
-    ordination_text = "\n".join(ordination_events[:3]) if ordination_events else "• ติดตามโครงการบวชประจำปีได้ที่หน้าเว็บไซต์จ้ะ"
+    model_name = 'gemini-2.5-flash'
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
     
-    message = f"""✨ ปฏิทินงานบุญสร้างบารมี DMC ✨
+    # 🧠 บรีฟระดับไฮเปอร์โฟกัส: เจาะจงเฉพาะงานบุญอนาคตในเดือนนี้และเดือนหน้าเท่านั้น
+    prompt = f"""
+    คุณคือนักข่าวสายบุญ หน้าที่หลักคือ "คัดสรรและเรียบเรียงข่าวสารงานบุญที่จะเกิดขึ้นในเดือนนี้ (มิถุนายน 2569) และเดือนหน้า (กรกฎาคม 2569)" จากข้อมูลเว็บ DMC.tv
+    เรียบเรียงให้ออกมาสั้น กระชับ ได้ใจความชวนเชิญชวนร่วมสร้างบารมี (แต่ละข้อห้ามยาวเกิน 2 บรรทัด)
+    
+    [กฎเหล็กเรื่องลิงก์และความแม่นยำ]
+    1. ห้ามคิด ลิงก์ ขึ้นมาเองเด็ดขาด! ลิงก์ในวงเล็บต้องเป็นลิงก์ที่อยู่ต่อท้าย "หัวข้อ" นั้นๆ ในข้อมูลดิบเป๊ะๆ 
+    2. คัดเลือกเฉพาะกิจกรรมทำบุญสร้างบารมีที่กำลังจะเกิดขึ้น (เช่น ทอดผ้าป่า, บูชาข้าวพระ, หล่อพระ, ตอกเสาเข็ม, บุญวันอาทิตย์)
 
-💰 [ข่าวสารงานบุญเชิญชวนร่วมทำบุญ]
-{merit_text}
+    ข้อมูลดิบจากหน้าเว็บ:
+    \"\"\"{raw_web_data}\"\"\"
 
-🧡 [โครงการบวช & อบรมเยาวชน]
-{ordination_text}
+    เขียนสรุปส่งเข้า LINE ตามโครงสร้างนี้เท่านั้น (ห้ามมีคำเกริ่นนำหรือคำสรุปของ AI):
 
-(ระบบปรับโครงสร้างลิงก์แบบอิสระ หมดปัญหา LINE อ่านลิงก์เพี้ยนแน่นอนครับจ้ะ)"""
-    return message
+    ✨ ปฏิทินข่าวสารงานบุญสร้างบารมี DMC ✨
+
+    💰 [ข่าวสารงานบุญเชิญชวนร่วมทำบุญ (มิ.ย. - ก.ค. 69)]
+    • (ค้นหาและสรุปงานบุญที่จะจัดขึ้น คัดเด่นๆ มา 4-6 งาน บอกชื่อบุญ วันเวลาจัดงานให้สั้นและชัดเจนที่สุด + [ร่วมบุญ: ลิงก์ตรงจากข้อมูลดิบ])
+
+    🙏 [โอวาทธรรมนำทางใจประจำวัน]
+    • (ดึงข้อคิดหรือโอวาทสั้นๆ คมๆ จากข้อมูลดิบมา 1 ข้อคิด สำหรับสร้างกำลังใจ + [ที่มา: ลิงก์ตรง])
+
+    🧡 [โครงการบวชเข้าพรรษา]
+    • (สรุปโครงการบวชหรืออบรมเยาวชนช่วงเข้าพรรษาที่กำลังเปิดรับสมัครแบบย่อที่สุด 1 ข้อ + [รายละเอียด: ลิงก์ตรง])
+    """
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    headers = {"Content-Type": "application/json"}
+    
+    for attempt in range(3):
+        try:
+            print(f"📡 ส่งข้อมูลไฮเปอร์โฟกัสไปที่รุ่น: {model_name} (รอบที่ {attempt + 1}/3)...")
+            res = requests.post(url, headers=headers, json=payload, timeout=30)
+            result_json = res.json()
+            
+            if res.status_code == 200 and 'candidates' in result_json:
+                ai_response = result_json['candidates'][0]['content']['parts'][0]['text']
+                print("🎉 AI เรียบเรียงงานบุญอนาคตสำเร็จ!")
+                return ai_response.strip()
+                
+            elif res.status_code in [503, 429]:
+                print(f"⏳ คิวเต็มชั่วคราว รอ 10 วินาที...")
+                time.sleep(10)
+                continue
+            else:
+                print(f"❌ พังด้วยรหัส: {res.status_code}")
+                break
+        except Exception as e:
+            print(f"⚠️ ข้อผิดพลาดเทคนิค: {e}")
+            time.sleep(5)
+            
+    return "❌ บอทกูเกิลติดขัดชั่วคราว โปรดกดรันใหม่อีกครั้งครับจ้ะ"
 
 def send_line_message(msg):
     if not LINE_TOKEN or not LINE_TARGET_ID:
@@ -72,7 +92,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันแก้ปัญหา %5D) เริ่มรัน...")
+    print("🚀 บอทสายบุญไฮเปอร์โฟกัส (เน้นเฉพาะงานบุญที่จะถึงนี้) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -88,17 +108,14 @@ def main():
                 t = link.inner_text().strip()
                 h = link.get_attribute("href")
                 if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
+                    web_data_list.append(f"หัวข้อ: {t} | ลิงก์: {h}")
                     
-                    # เติม / ปิดท้ายลิงก์เพื่อความสมบูรณ์ของเว็บ DMC
-                    if not h.endswith("/") and not any(h.endswith(ext) for ext in ['.html', '.htm', '.php', '.mp4', '.png', '.jpg']):
-                        h = h + "/"
-                        
-                    web_data_list.append((t, h))
-                    
+            # คัดเลือกมา 50 รายการแรก เพื่อให้ครอบคลุมงานบุญบนหน้าแรกทั้งหมด ดาต้ากำลังเพรียวลม
+            raw_web_data = "\n".join(web_data_list[:50])
             browser.close()
             
-            print("🧠 กำลังสแกนหาแก่นบุญและเคลียร์ท้ายลิงก์ให้สะอาด...")
-            final_report = filter_and_format_merit_news(web_data_list)
+            print("🧠 ส่งต่อข้อมูลดิบเข้าสู่ระบบคัดกรองปฏิทินงานบุญ...")
+            final_report = ask_gemini_to_summarize(raw_web_data)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
             print(final_report)
