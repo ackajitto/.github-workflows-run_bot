@@ -14,7 +14,7 @@ def filter_and_format_merit_news(web_data_list):
     merit_keywords = ['ผ้าป่า', 'บูชาข้าวพระ', 'หล่อพระ', 'ตอกเสาเข็ม', 'สร้างเจดีย์', 'เจ้าภาพ', 'ขอเชิญ', 'เชิญชวน', 'ร่วมสนับสนุน']
     study_keywords = ['บรรพชา', 'อุปสมบท', 'อบรม', 'รับสมัคร']
     
-    # 🔴 คีย์เวิร์ดต้องห้าม (คัดทิ้งทันที)
+    # 🔴 คีย์เวิร์ดต้องห้าม
     banned_keywords = ['mv', 'official', 'เพลง', 'เกียรติบัตร', 'ประมวลภาพ', 'ภาพงานบุญ', 'ถวายแล้ว', 'ผ่านพ้น', 'ภาพข่าว']
     
     merit_events = []
@@ -31,12 +31,13 @@ def filter_and_format_merit_news(web_data_list):
         if clean_title in seen_titles:
             continue
             
+        # 🎯 [ปรับแต่งที่นี่] ถอดวงเล็บ [] ออกทั้งหมด เพื่อไม่ให้ LINE แปลงลิงก์เพี้ยนเป็น %5D
         if any(kw in title_lower for kw in study_keywords):
             seen_titles.add(clean_title)
-            ordination_events.append(f"• {clean_title}\n  [รายละเอียด: {href}]")
+            ordination_events.append(f"• {clean_title}\n  🔗 รายละเอียด: {href}")
         elif any(kw in title_lower for kw in merit_keywords):
             seen_titles.add(clean_title)
-            merit_events.append(f"• {clean_title}\n  [ร่วมบุญ: {href}]")
+            merit_events.append(f"• {clean_title}\n  🔗 ลิงก์ร่วมบุญ: {href}")
                 
     merit_text = "\n".join(merit_events[:5]) if merit_events else "• ติดตามข่าวสารงานบุญเพิ่มเติมได้ที่หน้าเว็บไซต์จ้ะ"
     ordination_text = "\n".join(ordination_events[:3]) if ordination_events else "• ติดตามโครงการบวชประจำปีได้ที่หน้าเว็บไซต์จ้ะ"
@@ -49,7 +50,7 @@ def filter_and_format_merit_news(web_data_list):
 🧡 [โครงการบวช & อบรมเยาวชน]
 {ordination_text}
 
-(ระบบคัดกรองเฉพาะงานบุญและโครงการเปิดรับสมัคร ซ่อมแซมลิงก์เปิดได้ 100% ครับจ้ะ)"""
+(ระบบปรับโครงสร้างลิงก์แบบอิสระ หมดปัญหา LINE อ่านลิงก์เพี้ยนแน่นอนครับจ้ะ)"""
     return message
 
 def send_line_message(msg):
@@ -71,7 +72,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันแก้ทางเทคนิค Trailing Slash) เริ่มรัน...")
+    print("🚀 บอทสายบุญระบบตรง (เวอร์ชันแก้ปัญหา %5D) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -88,7 +89,7 @@ def main():
                 h = link.get_attribute("href")
                 if t and len(t) > 12 and h and h.startswith("http") and "dmc.tv" in h:
                     
-                    # 🎯 [จุดแก้ไขสำคัญ] ถ้าลิงก์ไม่ได้ลงท้ายด้วย / และไม่ใช่นามสกุลไฟล์ตรงๆ ให้เติม / ปิดท้ายให้มันทันที
+                    # เติม / ปิดท้ายลิงก์เพื่อความสมบูรณ์ของเว็บ DMC
                     if not h.endswith("/") and not any(h.endswith(ext) for ext in ['.html', '.htm', '.php', '.mp4', '.png', '.jpg']):
                         h = h + "/"
                         
@@ -96,7 +97,7 @@ def main():
                     
             browser.close()
             
-            print("🧠 กำลังสแกนหาแก่นบุญพร้อมจัดโครงสร้างลิงก์ใหม่...")
+            print("🧠 กำลังสแกนหาแก่นบุญและเคลียร์ท้ายลิงก์ให้สะอาด...")
             final_report = filter_and_format_merit_news(web_data_list)
             
             print("\n=== ผลลัพธ์สุดท้าย ===")
