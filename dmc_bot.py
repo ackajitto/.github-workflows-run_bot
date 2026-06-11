@@ -2,7 +2,7 @@ import os
 import time
 import re
 import requests
-from datetime import datetime  # 🎯 [เพิ่ม] ดึงโมดูลจัดการเวลาจริงมาใช้งาน
+from datetime import datetime  # 🎯 ดึงโมดูลคำนวณวันที่จริงมาทำงานร่วมกับ AI
 from playwright.sync_api import sync_playwright
 
 # --- ตั้งค่า URL และ API หลัก ---
@@ -28,16 +28,16 @@ def ask_gemini_to_summarize(raw_web_data):
     if not GEMINI_API_KEY:
         return "⚠️ ไม่ได้ตั้งค่า GEMINI_API_KEY ใน GitHub Secrets"
         
-    # ⏱️ [เพิ่ม] ระบบคำนวณเดือนปัจจุบัน เดือนถัดไป และปี พ.ศ. แบบอัตโนมัติ
+    # ⏱️ ระบบคำนวณเดือนปัจจุบัน เดือนถัดไป และปี พ.ศ. อัตโนมัติตามเวลาจริงของวันนั้น ๆ
     thai_months = [
         "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", 
         "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
     ]
     
     now = datetime.now()
-    this_month_idx = now.month - 1               # ดึงอินเด็กซ์เดือนปัจจุบัน (0-11)
-    next_month_idx = (now.month) % 12            # ดึงอินเด็กซ์เดือนถัดไป (0-11)
-    thai_year = now.year + 543                   # แปลงคริสต์ศักราช (ค.ศ.) เป็น พุทธศักราช (พ.ศ.)
+    this_month_idx = now.month - 1               # ลำดับเดือนปัจจุบัน (0-11)
+    next_month_idx = now.month % 12              # ลำดับเดือนถัดไป (0-11)
+    thai_year = now.year + 543                   # แปลง ค.ศ. เป็น พ.ศ.
     
     current_month_name = thai_months[this_month_idx]
     next_month_name = thai_months[next_month_idx]
@@ -45,7 +45,7 @@ def ask_gemini_to_summarize(raw_web_data):
     model_name = 'gemini-2.5-flash'
     url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
     
-    # 🧠 บรีฟคุมเข้ม: เปลี่ยนเป็น Dynamic Prompt หยอดตัวแปร {current_month_name}, {next_month_name} และ {thai_year} ลงไปแทนการพิมพ์ตายตัว
+    # 🧠 บรีฟคุมเข้ม: อัปเกรดเป็น Dynamic Prompt ใช้ตัวแปรส่องปฏิทินแทนการเขียนชื่อเดือนตายตัว
     prompt = f"""
     คุณคือนักข่าวสายบุญ ทำหน้าที่สรุปข้อมูลจาก DMC.tv ให้สั้น กระชับ น่าสนใจ และเปี่ยมด้วยบุญบันเทิง 
     (แต่ละข้อเขียนกระชับ 1-2 บรรทัดจบ เพื่อให้อ่านง่ายใน LINE)
@@ -77,7 +77,7 @@ def ask_gemini_to_summarize(raw_web_data):
     • (สรุปแก่นความรู้วันสำคัญ นิทรรศการ หรือสาระธรรมะให้อ่านเข้าใจทันที 1-2 ข้อ + 🔗 ความรู้: ลิงก์ที่ตรงกัน)
 
     🎉 [บันทึกภาพงานบุญชวนอนุโมทนา]
-    • (สรุปงานบุญประมวลภาพที่เพิ่งผ่านพ้นไป เพื่อให้สาธุชนได้ร่วมอนุโมทนาย้อนหลัง 1-2 งาน + 🔗 รวมรูป: ลิงก์ของข่าวนั้น)
+    • (สรุปงานบุญประมวลภาพที่เพิ่งผ่านพ้นไป เพื่อให้สาธุชนได้ร่วมอนุโมทนาย้อนหลัง 1-2 งาน + 🔗 รวมรูป: ลิงก์ของข่าั้น)
     """
     
     payload = {
@@ -128,7 +128,7 @@ def send_line_message(msg):
         print(f"❌ ส่ง LINE ไม่สำเร็จ: {e}")
 
 def main():
-    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันส่องปฏิทินเปลี่ยนเดือนอัตโนมัติ) เริ่มรัน...")
+    print("🚀 บอทสายบุญอัจฉริยะ (เวอร์ชันแก้ทางเทคนิคเรื่องลิงก์บทความล่ม) เริ่มรัน...")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
