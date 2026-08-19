@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: 1. ดึงโค้ดมาเตรียมพร้อม
         uses: actions/checkout@v4
+        with:
+          node-version: '24'
 
       - name: 2. ติดตั้ง Python
         uses: actions/setup-python@v5
