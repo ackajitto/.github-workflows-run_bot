@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6 # หรือเช็คว่าเวอร์ชันล่าสุดคืออะไร (ปกติใช้ v4 ตัวเดิมแต่ถ้าผู้พัฒนาออก v อัปเดตมาก็เปลี่ยน หรือปล่อยไว้ก็ได้)
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6 # อัปเดตเป็น setup-python เวอร์ชันล่าสุด
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -28,3 +28,11 @@ jobs:
           LINE_TARGET_ID: ${{ secrets.LINE_TARGET_ID }}
           USERS_JSON: ${{ secrets.USERS_JSON }}
         run: python meditation_bot.py
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: debug_*.png
+          if-no-files-found: ignore
