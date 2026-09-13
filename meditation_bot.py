@@ -77,8 +77,8 @@ def process_user(browser, person, attempt):
                 raise Exception(f"ล็อกอินไม่สำเร็จ (username/password อาจผิด หรือบัญชีถูกล็อก) - URL: {page.url}")
 
             # --- DIAGNOSTIC: hr.dkcmain.org:9000 กับ hr2.dkcmain.org เป็นคนละ subdomain กัน
-            # การ goto ตรงไปที่ hr2 อาจไม่มี session/cookie ที่ถูกต้อง (ถูกเด้งกลับ portal)
-            # ลองหาลิงก์จริงในหน้า dashboard ที่พาไปหน้า memo/hr2 ก่อน
+            # การ goto ตรงไปที่ hr2 แต่แรกไม่มี session/cookie ที่ถูกต้อง (ถูกเด้งกลับ portal)
+            # ต้องกดลิงก์ SSO (hr24_authen_meditation.php) ก่อนเพื่อสร้าง session ของ hr2 ให้ถูกต้อง
             memo_link = page.locator('a[href*="hr2.dkcmain.org"], a[href*="memo.php"]').first
             new_page = None
 
@@ -93,6 +93,17 @@ def process_user(browser, person, attempt):
                 except PlaywrightTimeoutError:
                     # ไม่ได้เปิดแท็บใหม่ แปลว่าลิงก์เปลี่ยนหน้าเดิม
                     page.wait_for_load_state('networkidle')
+
+                print(f"🔎 หลังกดลิงก์ SSO อยู่ที่ URL: {page.url} (Title: {page.title()})")
+
+                # --- ตอนนี้ session ของ hr2 ถูกสร้างแล้ว (ผ่านลิงก์ authen)
+                # แต่ลิงก์อาจพาไปหน้ากลาง (เช่น index_in.php) ไม่ใช่ memo.php ตรงๆ
+                # ลอง goto ไปที่ MEMO_URL ตรงๆ อีกครั้ง เพราะตอนนี้ควรมี session ที่ถูกต้องแล้ว
+                if 'memo.php' not in page.url:
+                    print(f"➡️ ยังไม่ถึงหน้า memo.php, ลอง goto ตรงๆ อีกครั้ง (มี session แล้ว)")
+                    page.goto(MEMO_URL)
+                    page.wait_for_load_state('networkidle')
+                    print(f"🔎 หลัง goto MEMO_URL อยู่ที่ URL: {page.url} (Title: {page.title()})")
             else:
                 # หาลิงก์ไม่เจอ -> log รายการลิงก์ทั้งหมดในหน้าไว้ debug แล้ว fallback ไป goto ตรงๆ
                 all_links = page.locator('a').evaluate_all(
@@ -102,23 +113,33 @@ def process_user(browser, person, attempt):
                                or 'สมาธิ' in l['text'] or 'meditation' in l['text'].lower()]
                 print(f"⚠️ ไม่เจอลิงก์ memo ในหน้า dashboard โดยตรง")
                 print(f"🔎 ลิงก์ที่น่าสนใจที่เจอ: {interesting}")
-                page.screenshot(path=f"debug_{person['name']}_dashboard_{attempt}.png")
 
                 # fallback: ลอง goto ตรงๆ เหมือนเดิม (เผื่อจริงๆ ใช้ได้แค่บางรอบ)
                 page.goto(MEMO_URL)
                 page.wait_for_load_state('networkidle')
 
-            # เช็คว่าโดนเด้งกลับไปหน้า portal/login ของ hr.dkcmain.org หรือไม่ (แปลว่ายังเข้าไม่ถึง memo จริง)
-            if 'hr.dkcmain.org' in page.url:
-                page.screenshot(path=f"debug_{person['name']}_redirected_{attempt}.png")
+            # เช็คว่าโดนเด้งกลับไปหน้า login ของ hr.dkcmain.org หรือไม่ (แปลว่ายังเข้าไม่ถึง memo จริง)
+            if LOGIN_PATH in page.url:
                 raise Exception(
-                    f"ถูกเด้งกลับไปที่ hr.dkcmain.org (เข้าหน้า memo ไม่สำเร็จ, session/SSO อาจไม่ถูกส่งผ่าน) - URL: {page.url}"
+                    f"ถูกเด้งกลับไปหน้า login (เข้าหน้า memo ไม่สำเร็จ, session/SSO อาจไม่ถูกส่งผ่าน) - URL: {page.url}"
                 )
 
             try:
                 page.wait_for_selector('input[id^="hour_"]', timeout=10000)
             except PlaywrightTimeoutError:
-                page.screenshot(path=f"debug_{person['name']}_no_input_{attempt}.png")
+                # log เนื้อหาหน้าปัจจุบันเป็น text ตรงๆ ใน log เลย (เผื่อ screenshot ใช้ไม่ได้)
+                try:
+                    body_text = page.inner_text('body')[:1500]
+                except Exception:
+                    body_text = "(อ่าน body ไม่ได้)"
+                print(f"🔎 เนื้อหาหน้าปัจจุบัน (1500 ตัวแรก):\n{body_text}")
+
+                # ลองหาลิงก์อื่นในหน้านี้ที่อาจพาไปหน้า memo จริง
+                all_links_here = page.locator('a').evaluate_all(
+                    "els => els.map(e => ({text: e.innerText.trim(), href: e.href})).filter(l => l.href)"
+                )
+                print(f"🔎 ลิงก์ทั้งหมดในหน้านี้: {all_links_here}")
+
                 raise Exception(
                     f"โหลดหน้าตารางไม่สำเร็จ หรือไม่มีช่องกรอกข้อมูล - URL: {page.url}, Title: {page.title()}"
                 )
