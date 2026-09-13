@@ -64,13 +64,44 @@ def process_user(browser, person, attempt):
                 page.screenshot(path=f"debug_{person['name']}_login_fail_{attempt}.png")
                 raise Exception(f"ล็อกอินไม่สำเร็จ (username/password อาจผิด หรือบัญชีถูกล็อก) - URL: {page.url}")
 
-            # 2. วาร์ปเข้าหน้ากรอกชั่วโมง
-            page.goto(MEMO_URL)
+            # --- DIAGNOSTIC: hr.dkcmain.org:9000 กับ hr2.dkcmain.org เป็นคนละ subdomain กัน
+            # การ goto ตรงไปที่ hr2 อาจไม่มี session/cookie ที่ถูกต้อง (ถูกเด้งกลับ portal)
+            # ลองหาลิงก์จริงในหน้า dashboard ที่พาไปหน้า memo/hr2 ก่อน
+            memo_link = page.locator('a[href*="hr2.dkcmain.org"], a[href*="memo.php"]').first
+            new_page = None
 
-            # เช็คอีกรอบเผื่อโดนเด้งกลับไปหน้า login ตอน goto MEMO_URL
-            if LOGIN_PATH in page.url:
+            if memo_link.count() > 0:
+                print(f"🔎 เจอลิงก์ในหน้า dashboard: {memo_link.get_attribute('href')}")
+                try:
+                    with context.expect_page(timeout=5000) as popup_info:
+                        memo_link.click()
+                    new_page = popup_info.value
+                    new_page.wait_for_load_state('networkidle')
+                    page = new_page  # ใช้แท็บใหม่แทนต่อจากนี้
+                except PlaywrightTimeoutError:
+                    # ไม่ได้เปิดแท็บใหม่ แปลว่าลิงก์เปลี่ยนหน้าเดิม
+                    page.wait_for_load_state('networkidle')
+            else:
+                # หาลิงก์ไม่เจอ -> log รายการลิงก์ทั้งหมดในหน้าไว้ debug แล้ว fallback ไป goto ตรงๆ
+                all_links = page.locator('a').evaluate_all(
+                    "els => els.map(e => ({text: e.innerText.trim(), href: e.href})).filter(l => l.href)"
+                )
+                interesting = [l for l in all_links if 'memo' in l['href'].lower() or 'hr2' in l['href'].lower()
+                               or 'สมาธิ' in l['text'] or 'meditation' in l['text'].lower()]
+                print(f"⚠️ ไม่เจอลิงก์ memo ในหน้า dashboard โดยตรง")
+                print(f"🔎 ลิงก์ที่น่าสนใจที่เจอ: {interesting}")
+                page.screenshot(path=f"debug_{person['name']}_dashboard_{attempt}.png")
+
+                # fallback: ลอง goto ตรงๆ เหมือนเดิม (เผื่อจริงๆ ใช้ได้แค่บางรอบ)
+                page.goto(MEMO_URL)
+                page.wait_for_load_state('networkidle')
+
+            # เช็คว่าโดนเด้งกลับไปหน้า portal/login ของ hr.dkcmain.org หรือไม่ (แปลว่ายังเข้าไม่ถึง memo จริง)
+            if 'hr.dkcmain.org' in page.url:
                 page.screenshot(path=f"debug_{person['name']}_redirected_{attempt}.png")
-                raise Exception(f"ถูกเด้งกลับไปหน้า login ตอนเข้าหน้า memo (session อาจไม่ผ่าน) - URL: {page.url}")
+                raise Exception(
+                    f"ถูกเด้งกลับไปที่ hr.dkcmain.org (เข้าหน้า memo ไม่สำเร็จ, session/SSO อาจไม่ถูกส่งผ่าน) - URL: {page.url}"
+                )
 
             try:
                 page.wait_for_selector('input[id^="hour_"]', timeout=10000)
