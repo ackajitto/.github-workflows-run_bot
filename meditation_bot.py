@@ -54,7 +54,19 @@ def process_user(browser, person, attempt):
             page.goto(BASE_URL + LOGIN_PATH)
             page.fill('[id="data.login"]', person["user"])
             page.fill('[id="data.password"]', person["pass"])
-            page.click('.fi-btn-label')
+
+            # --- เลือกปุ่ม "เข้าสู่ระบบ" แบบเจาะจง ---
+            # หน้า login มีหลายปุ่ม: ปุ่ม submit ธรรมดา (username/password) และปุ่ม SSO
+            # "เข้าสู่ระบบ HR" ที่เป็นลิงก์ไป /auth/sso_dkc/redirect ซึ่งเป็นคนละ flow กัน
+            # ต้องกดเฉพาะปุ่ม submit จริงๆ ไม่ใช่ลิงก์ SSO
+            login_btn = page.locator('button[type="submit"]').filter(has_text="เข้าสู่ระบบ").filter(has_not_text="HR")
+
+            if login_btn.count() == 0:
+                # เผื่อ text ไม่ตรงเป๊ะ ลอง fallback หาปุ่ม submit ตัวแรกในฟอร์ม (ไม่ใช่ <a> ของ SSO แน่นอน)
+                login_btn = page.locator('form button[type="submit"]').first
+
+            page.screenshot(path=f"debug_{person['name']}_before_click_{attempt}.png")
+            login_btn.click()
 
             page.wait_for_load_state('networkidle')
 
