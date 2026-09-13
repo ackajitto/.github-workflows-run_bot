@@ -1,6 +1,6 @@
 import os
 import json
-import time  # <--- เพิ่มตรงนี้เพื่อแก้บั๊กพังบรรทัดที่ 84
+import time
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
@@ -46,26 +46,49 @@ def process_user(browser, person):
     my_min = str(person.get("mins", 0))
     filled_dates = []
 
-    with browser.new_context() as context:
+    # 1. ตั้งค่า User-Agent และ Viewport เลียนแบบเบราว์เซอร์จริง ป้องกันโดนบล็อก
+    context = browser.new_context(
+        viewport={'width': 1280, 'height': 800},
+        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+    )
+    
+    try:
         page = context.new_page()
 
-        # 1. เข้าสู่ระบบ
-        page.goto(BASE_URL + LOGIN_PATH)
+        # 2. เข้าสู่ระบบ
+        print(f"🔑 กำลังเข้าสู่ระบบสำหรับ {person['name']}...")
+        page.goto(BASE_URL + LOGIN_PATH, wait_until="networkidle")
+        
+        page.wait_for_selector('[id="data.login"]', timeout=10000)
         page.fill('[id="data.login"]', person["user"])
         page.fill('[id="data.password"]', person["pass"])
-        page.click('.fi-btn-label')
         
+        # รอให้กระบวนการ Login ยืนยันสำเร็จก่อนเปลี่ยนหน้า
+        with page.expect_navigation(timeout=15000, wait_until="networkidle"):
+            page.click('.fi-btn-label')
+        
+        page.wait_for_timeout(2000)
+
+        # 3. เปิดหน้ากรอกชั่วโมง
+        print(f"🌐 กำลังเปิดหน้าตาราง: {MEMO_URL}")
+        page.goto(MEMO_URL, wait_until="domcontentloaded")
         page.wait_for_load_state('networkidle')
 
-        # 2. วาร์ปเข้าหน้ากรอกชั่วโมง
-        page.goto(MEMO_URL)
-        
+        # 4. ตรวจสอบช่องกรอกข้อมูล (พร้อมระบบเซฟรูปเมื่อเกิดข้อผิดพลาด)
         try:
-            page.wait_for_selector('input[id^="hour_"]', timeout=10000)
+            page.wait_for_selector('input[id^="hour_"]', timeout=15000)
         except PlaywrightTimeoutError:
-            raise Exception("โหลดหน้าตารางไม่สำเร็จ หรือไม่มีช่องกรอกข้อมูล")
+            current_url = page.url
+            error_img = f"error_{person['name']}.png"
+            page.screenshot(path=error_img)
+            print(f"📸 บันทึกภาพหน้าจอไว้ที่ {error_img} (URL ปัจจุบัน: {current_url})")
+            
+            if "login" in current_url.lower():
+                raise Exception(f"เข้าสู่ระบบไม่สำเร็จ (ถูก Redirect กลับหน้า Login: {current_url})")
+            else:
+                raise Exception(f"โหลดหน้าตารางไม่สำเร็จ หรือไม่มีช่องกรอกข้อมูล (URL: {current_url})")
 
-        # 3. กรอกข้อมูลชั่วโมง
+        # 5. กรอกข้อมูลชั่วโมง
         hour_fields = page.locator('input[id^="hour_"]').all()
         for h in hour_fields:
             if h.is_editable() and (h.input_value() == "0" or h.input_value() == ""):
@@ -93,11 +116,11 @@ def process_user(browser, person):
             if m.is_editable() and (m.input_value() == "0" or m.input_value() == ""):
                 m.fill(my_min)
 
-        # 4. กดบันทึก
+        # 6. กดบันทึก
         if filled_dates:
-            save_btn = page.locator('button.btn-success:has-text("บันทึก")')
+            save_btn = page.locator('button.btn-success:has-text("บันทึก"), button:has-text("บันทึก")')
             if save_btn.is_visible():
-                save_btn.click()
+                save_btn.first.click()
                 page.wait_for_load_state('networkidle', timeout=10000) 
             else:
                 raise Exception("หาปุ่มบันทึกไม่เจอ!")
@@ -107,6 +130,8 @@ def process_user(browser, person):
             return f"{person['name']} ➡️ {time_text}\n    📅 วันที่: {dates_joined}"
         else:
             return f"{person['name']} ➡️ ครบแล้ว ไม่มีช่องว่างให้กรอก ✨"
+    finally:
+        context.close()
 
 def main():
     if not users:
@@ -134,9 +159,10 @@ def main():
                     print(f"⚠️ พลาดรอบที่ {attempt}/{MAX_RETRIES} ของ {person['name']}: {e}")
                     if attempt == MAX_RETRIES:
                         print(f"❌ หมดโควต้า! ข้ามการทำรายการของ {person['name']}")
-                        fail_list.append(f"{person['name']} (พลาด 3 รอบรวด: {str(e)[:50]}...)")
+                        fail_list.append(f"{person['name']} (พลาด 3 รอบรวด: {str(e)[:60]}...)")
                     else:
                         print("🔄 กำลังลองใหม่...")
+                        time.sleep(2)
 
         browser.close()
 
